@@ -32,7 +32,7 @@
   [flow]
   (map-vals fnk-inputs flow))
 
-(defn eval-order [flow order required-keys input-map]
+(defn evaluate-order [flow order required-keys input-map]
   "Evaluate flow fnks in the given order using input map values.
    Return a map from keywords to values. Output map includes all input keywords.
    Input map must contain all required keywords."
@@ -55,4 +55,4 @@
         (assert (empty? (graph/graph-loops (select-keys fg remains)))))
       (fn [input-map]
         (assert (every? input-map required-keys))
-        (eval-order flow order required-keys input-map)))))
+        (evaluate-order flow order required-keys input-map)))))
