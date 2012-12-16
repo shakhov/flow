@@ -6,7 +6,7 @@ Function composition based on graph declarations.
 
 Flow is a Clojure library inspired by Prismatic Graph concept.
 It is being developed by a bridge engineer as a tool replacing
-spreadsheet based sowftware for structural analysis and design.
+spreadsheet based software for structural analysis and design.
 
 ## Usage
 
