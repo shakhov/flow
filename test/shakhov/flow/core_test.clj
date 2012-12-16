@@ -30,3 +30,7 @@
          ((eager-compile flow-1) {:a 0.5 :b -0.6})))
   (is (= {:a 2.5 :num-faces 6 :num-edges 12 :face-area 6.25 :total-area 37.5 :volume 15.625}
          ((eager-compile flow-cube) {:a 2.5}))))
+
+(deftest flow-overload
+  (is (= {:a 0.5 :b -0.6 :x 999 :y -0.12 :z 998.88}
+         ((eager-compile flow-1) {:a 0.5 :b -0.6 :x 999}))))
