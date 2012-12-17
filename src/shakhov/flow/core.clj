@@ -24,7 +24,10 @@
 (defmacro flow
   "Return new flow. Flow is a map from keywords to fnks."
   [flow-map]
-  flow-map)
+  {:pre [(map? flow-map)]}
+  (into {} (map (fn [[key decl]]
+                  [key `(fnk ~@decl)])
+                flow-map)))
 
 (defn flow-graph
   "Return map from flow keys to their dependencies.

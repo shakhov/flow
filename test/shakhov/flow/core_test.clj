@@ -11,16 +11,16 @@
   (is (= (+ 4 5 6) (fnk-1 {:a 4 :b 5 :c 6}))))
 
 (def flow-1
-  (flow {:x (fnk [a] (+ 10 a))
-         :y (fnk [b] (/ b 5))
-         :z (fnk [x y] (+ x y))}))
+  (flow {:x ([a] (+ 10 a))
+         :y ([b] (/ b 5))
+         :z ([x y] (+ x y))}))
 
 (def flow-cube
-  (flow {:num-faces (fnk [] 6)
-         :num-edges (fnk [] 12)
-         :face-area (fnk [a] (* a a))
-         :total-area (fnk [face-area num-faces] (* face-area num-faces))
-         :volume (fnk [a] (* a a a))}))
+  (flow {:num-faces ([] 6)
+         :num-edges ([] 12)
+         :face-area ([a] (* a a))
+         :total-area ([face-area num-faces] (* face-area num-faces))
+         :volume ([a] (* a a a))}))
 
 (deftest flow-test
   (is (fn? (eager-compile flow-1)))
