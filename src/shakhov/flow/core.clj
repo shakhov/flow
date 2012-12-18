@@ -35,31 +35,27 @@
   [flow]
   (map-vals fnk-inputs flow))
 
-(defn evaluate-order [flow order required-keys input-map
-                      & {:keys [map-fn] :or {map-fn map}}]
+(defn evaluate-order [flow order input-map]
   "Evaluate flow fnks in the given order using input map values.
-   Return a map from keywords to values. Output map includes all input keywords.
-   Input map must contain all required keywords."
+   Return a map from keywords to values. Output map includes all input keywords."
   (reduce (fn [output-map eval-stage]
             (into output-map
-                  (map-fn (fn [key] [key (or (input-map key)
-                                             ((flow key) output-map))])
-                          eval-stage)))
-          input-map
-          order))
+                  (map (fn [key]
+                         [key (or (input-map key)
+                                  ((flow key) output-map))])
+                       eval-stage)))
+          input-map order))
 
 (def eager-compile
   "Renturn compiled flow function. The function takes map of input values
    and returns the result of evaluating flow fnks in precalculated order.
    Graph ordering and testing graph for loops takes place only once."
-  (fn [flow
-       & {:keys [parallel]}]
+  (fn [flow]
     (let [fg (flow-graph flow)
           {:keys [order remains]} (graph/graph-order fg)
-          required-keys (graph/external-keywords fg)]
+             required-keys (graph/external-keys fg)]
       (when-not (empty? remains)
         (assert (empty? (graph/graph-loops (select-keys fg remains)))))
       (fn [input-map]
         (assert (every? input-map required-keys))
-        (evaluate-order flow order required-keys input-map
-                        :map-fn (if parallel pmap map))))))
+        (evaluate-order flow order input-map)))))
