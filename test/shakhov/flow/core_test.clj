@@ -34,3 +34,8 @@
 (deftest flow-overload
   (is (= {:a 0.5 :b -0.6 :x 999 :y -0.12 :z 998.88}
          ((eager-compile flow-1) {:a 0.5 :b -0.6 :x 999}))))
+
+(deftest lazy-flow-test
+  (is (fn? (lazy-compile flow-1)))
+  (is (= 24 (:z ((lazy-compile flow-1) {:a 10 :b 20})))))
+  (is (= :volume 15.625 (:volume ((lazy-compile flow-cube) {:a 2.5}))))

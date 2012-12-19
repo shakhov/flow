@@ -1,6 +1,8 @@
 (ns shakhov.flow.core
   (:use [shakhov.flow.utils])
-  (:require [shakhov.flow.graph :as graph]))
+  (:require [shakhov.flow.graph :as graph]
+            [lazymap.core :as lazy-map]
+            [clojure.set :as set]))
 
 (defmacro fnk
   "Return fnk - a keyword function. The function takes single map
@@ -53,9 +55,53 @@
   (fn [flow]
     (let [fg (flow-graph flow)
           {:keys [order remains]} (graph/graph-order fg)
-             required-keys (graph/external-keys fg)]
+           inputs (graph/external-keys fg)]
       (when-not (empty? remains)
         (assert (empty? (graph/graph-loops (select-keys fg remains)))))
       (fn [input-map]
-        (assert (every? input-map required-keys))
+        (assert (every? input-map inputs))
         (evaluate-order flow order input-map)))))
+
+(defn- fnk-memoize [memo k f]
+  (with-meta 
+    (fn [input-map]
+      (or (@memo k)
+          (let [output (f input-map)]
+            (swap! memo assoc k output)
+            output))) 
+    (meta f)))
+
+(defn- key-suborders
+  [fg order paths inputs]
+  (let [overriden (set/intersection
+                   (set inputs)
+                   (set/difference (graph/internal-keys fg)
+                                   (graph/free-internal-keys fg)))
+        key-paths (map-vals (partial filter #(not-any? overriden %)) paths)
+        key-deps  (graph/graph-transitive-deps fg key-paths)]
+    {:orders (map-keys #(graph/filter-order order (key-deps %)) fg)
+     :inputs (map-keys #(set/intersection (graph/external-keys fg) (key-deps %)) fg)}))
+
+(def lazy-compile
+  "Return lazy compiled flow function. The function takes a map of input values
+   and returns a lazy-map of delayed evaluations. Each time map key's value is needed,
+   all required flow functions are called in proper order. Each key function evaluates only once."
+  (fn [flow]
+    (let [fg (flow-graph flow)
+          {:keys [order remains]} (graph/graph-order fg)
+          flow-paths (graph/graph-paths fg)]
+      (when-not (empty? remains)
+        (assert (empty? (graph/graph-loops (select-keys fg remains)))))
+      ; Function to return
+      (fn [input-map]
+        (let [output-map (atom input-map)
+              flow-memo  (map-map (partial fnk-memoize output-map) flow)
+              suborders  (key-suborders fg order flow-paths (keys input-map))]
+          (lazy-map/create-lazy-map
+           (into input-map
+                 (map-keys (fn [k]
+                             (assert (every? input-map ((:inputs suborders) k)))
+                             (delay (or (@output-map k)
+                                        (do (evaluate-order flow-memo ((:orders suborders) k) @output-map)
+                                            (k @output-map)))))
+                           flow))))))))

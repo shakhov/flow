@@ -49,17 +49,15 @@
   ([fg key]
      (key-transitive-deps fg key (key-paths fg key)))
   ([fg key paths]
-     (reduce into #{} paths)))
+     (reduce into #{key} paths)))
 
 (defn graph-transitive-deps
   "Return a map from given keys to their dependencies."
   ([fg]
-     (graph-transitive-deps fg (keys fg)))
-  ([fg keys]
-     (graph-transitive-deps fg keys(graph-paths fg keys)))
-  ([fg keys paths]
+     (graph-transitive-deps fg (graph-paths fg (keys fg))))
+  ([fg paths]
      (map-keys (fn[k] (key-transitive-deps fg k (paths k)))
-               (select-keys fg keys))))
+               fg)))
 
 (defn- trim-path
   "Return rest of the path at the first occurance of key"
