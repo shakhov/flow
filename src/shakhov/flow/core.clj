@@ -98,10 +98,9 @@
               flow-memo  (map-map (partial fnk-memoize output-map) flow)
               suborders  (key-suborders fg order flow-paths (keys input-map))]
           (lazy-map/create-lazy-map
-           (into input-map
-                 (map-keys (fn [k]
-                             (delay (or (@output-map k)
-                                        (do (evaluate-order flow-memo ((:orders suborders) k)
-                                                            @output-map ((:inputs suborders) k))
-                                            (@output-map k)))))
-                           flow))))))))
+           (merge (map-keys (fn [k]
+                              (delay (or (k @output-map)
+                                         (k (evaluate-order flow-memo   ((:orders suborders) k)
+                                                            @output-map ((:inputs suborders) k))))))
+                            flow)
+                  input-map)))))))
