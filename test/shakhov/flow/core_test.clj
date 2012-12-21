@@ -38,4 +38,4 @@
 (deftest lazy-flow-test
   (is (fn? (lazy-compile flow-1)))
   (is (= 24 (:z ((lazy-compile flow-1) {:a 10 :b 20})))))
-  (is (= :volume 15.625 (:volume ((lazy-compile flow-cube) {:a 2.5}))))
+  (is (= 15.625 (:volume ((lazy-compile flow-cube) {:a 2.5}))))
