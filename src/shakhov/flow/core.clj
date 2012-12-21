@@ -37,9 +37,10 @@
   [flow]
   (map-vals fnk-inputs flow))
 
-(defn evaluate-order [flow order input-map]
+(defn evaluate-order [flow order input-map inputs]
   "Evaluate flow fnks in the given order using input map values.
    Return a map from keywords to values. Output map includes all input keywords."
+  (assert (every? input-map inputs))
   (reduce (fn [output-map eval-stage]
             (into output-map
                   (map (fn [key]
@@ -55,12 +56,11 @@
   (fn [flow]
     (let [fg (flow-graph flow)
           {:keys [order remains]} (graph/graph-order fg)
-           inputs (graph/external-keys fg)]
+           required (graph/external-keys fg)]
       (when-not (empty? remains)
         (assert (empty? (graph/graph-loops (select-keys fg remains)))))
       (fn [input-map]
-        (assert (every? input-map inputs))
-        (evaluate-order flow order input-map)))))
+        (evaluate-order flow order input-map required)))))
 
 (defn- fnk-memoize [memo k f]
   (with-meta 
@@ -100,8 +100,8 @@
           (lazy-map/create-lazy-map
            (into input-map
                  (map-keys (fn [k]
-                             (assert (every? input-map ((:inputs suborders) k)))
                              (delay (or (@output-map k)
-                                        (do (evaluate-order flow-memo ((:orders suborders) k) @output-map)
-                                            (k @output-map)))))
+                                        (do (evaluate-order flow-memo ((:orders suborders) k)
+                                                            @output-map ((:inputs suborders) k))
+                                            (@output-map k)))))
                            flow))))))))
