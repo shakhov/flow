@@ -4,27 +4,51 @@
             [lazymap.core :as lazy-map]
             [clojure.set :as set]))
 
+(defn- destructure-bindings
+  [binding-map]
+  (let [key-names (set (:keys binding-map))
+        sym-names (set (:syms binding-map))
+        str-names (set (:strs binding-map))
+        rest-bindings  (dissoc binding-map :keys :syms :strs :or :as)
+        default-names  (set (keys (:or binding-map)))]
+
+    {:required-keys (set/union
+                     (set/difference sym-names default-names)
+                     (set (map name (set/difference str-names default-names)))
+                     (set (map keyword (set/difference key-names default-names)))
+                     (set (vals (apply dissoc rest-bindings default-names))))
+                     
+     :optional-keys (set/union
+                     (set/intersection sym-names default-names)
+                     (set (map name (set/intersection str-names default-names)))
+                     (set (map keyword (set/intersection key-names default-names)))
+                     (set (vals (select-keys rest-bindings default-names))))}))
+
+
 (defmacro fnk
   "Return fnk - a keyword function. The function takes single map
-  argument to destructure with {:keys [...]}. Fnk asserts that all
-  required keys are present and evaluates the body form. Set of required
-  inputs is stored in fnk's metadata."
-  [inputs & body]
-  (let [input-keys (set (map keyword inputs))]
+  argument to destructure. Fnk asserts that all required keys are present
+  and evaluates the body form. Set of required and optional keys is stored in fnk's metadata."
+  [bindings & body]
+  (let [binding-map (if (vector? bindings) {:keys bindings} bindings)
+        {:keys [required-keys optional-keys]} (destructure-bindings binding-map)]
     `(with-meta
        (fn [input-map#]
-         (assert (every? input-map# ~input-keys))
-         (let [{:keys ~inputs} input-map#]
+         (assert (every? input-map# '~required-keys))
+         (let [~binding-map input-map#]
            ~@body))
-       {:input-keys ~input-keys})))
+       {::required-keys '~required-keys
+        ::optional-keys '~optional-keys})))
 
 (defn fnk-inputs
-  "Return set of keys required to evaluate fnk."
-  [fnk]
-  (:input-keys (meta fnk)))
+  "Return set of keys required to evaluate fnk in the flow."
+  [flow fnk]
+  (set/union (::required-keys (meta fnk))
+             (set/intersection (::optional-keys (meta fnk))
+                               (set (keys flow)))))
 
 (defmacro flow
-  "Return new flow. Flow is a map from keywords to fnks."
+  "Return new flow. Flow is a map from keys to fnks."
   [flow-map]
   {:pre [(map? flow-map)]}
   (into {} (map (fn [[key decl]]
@@ -33,13 +57,13 @@
 
 (defn flow-graph
   "Return map from flow keys to their dependencies.
-   Required inputs of each fnk specify flow graph relationships"
+   Required keys of each fnk specify flow graph relationships"
   [flow]
-  (map-vals fnk-inputs flow))
+  (map-vals (partial fnk-inputs flow) flow))
 
 (defn evaluate-order [flow order input-map inputs]
   "Evaluate flow fnks in the given order using input map values.
-   Return a map from keywords to values. Output map includes all input keywords."
+   Return a map from keys to values. Output map includes all input keys."
   (assert (every? input-map inputs))
   (reduce (fn [output-map eval-stage]
             (into output-map
@@ -56,11 +80,11 @@
   (fn [flow]
     (let [fg (flow-graph flow)
           {:keys [order remains]} (graph/graph-order fg)
-           required (graph/external-keys fg)]
+           inputs (graph/external-keys fg)]
       (when-not (empty? remains)
         (assert (empty? (graph/graph-loops (select-keys fg remains)))))
       (fn [input-map]
-        (evaluate-order flow order input-map required)))))
+        (evaluate-order flow order input-map inputs)))))
 
 (defn- fnk-memoize [memo k f]
   (with-meta 
