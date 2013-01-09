@@ -128,3 +128,17 @@
                                                             @output-map ((:inputs suborders) k))))))
                             flow)
                   input-map)))))))
+
+(defn flow->dot
+  "Print representation of flow in 'dot' format to standard output."
+  [flow]
+  (let [fg (flow-graph flow)
+        all-keys (set/union (graph/internal-keys fg)
+                            (graph/external-keys fg))]
+    (println "digraph {")
+    (doseq [key all-keys]
+      (println (str (name key) ";")))
+    (doseq [[key inputs] fg]
+      (doseq [i inputs]
+        (println (str (name i) " -> " (name key)))))
+    (println "}")))
