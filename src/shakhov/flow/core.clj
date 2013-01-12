@@ -123,9 +123,10 @@
               suborders  (key-suborders fg order flow-paths (keys input-map))]
           (lazy-map/create-lazy-map
            (merge (map-keys (fn [k]
-                              (delay (or (k @output-map)
-                                         (k (evaluate-order flow-memo   ((:orders suborders) k)
-                                                            @output-map ((:inputs suborders) k))))))
+                              (delay (or (@output-map k)
+                                         ((evaluate-order flow-memo   ((:orders suborders) k)
+                                                          @output-map ((:inputs suborders) k))
+                                          k))))
                             flow)
                   input-map)))))))
 
