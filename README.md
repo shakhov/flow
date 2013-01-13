@@ -10,10 +10,10 @@ spreadsheet based software for structural analysis and design.
 
 ## Usage
 
-FIXME
+Check 'core_test.clj' for examples.
 
 ## License
 
-Copyright © 2012 FIXME
+Copyright © 2013 Artem Shakhov
 
 Distributed under the Eclipse Public License, the same as Clojure.

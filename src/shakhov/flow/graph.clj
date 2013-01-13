@@ -1,33 +1,37 @@
+;; This program and the accompanying materials are made available under the terms
+;; of the Eclipse Public License v1.0 which accompanies this distribution,
+;; and is available at http://www.eclipse.org/legal/epl-v10.html
+
 (ns shakhov.flow.graph
   (:require [clojure.set :as set])
   (:use shakhov.flow.utils))
 
-(defn internal-keywords
-  "Return a set of internal keywords - keywords provided by the graph itself."
+(defn internal-keys
+  "Return a set of internal keys - keys provided by the graph itself."
   [fg] 
   (set (keys fg)))
 
-(defn external-keywords
-  "Return a set of external keywords - keywords required but not provided by graph."
+(defn external-keys
+  "Return a set of external keys - keys required but not provided by graph."
   [fg]
   (set/difference (reduce into #{} (vals fg))
-                  (internal-keywords fg)))
+                  (internal-keys fg)))
 
-(defn free-internal-keywords
-  "Return a set of internal keywords with empty dependencies."
+(defn free-internal-keys
+  "Return a set of internal keys with empty dependencies."
   [fg]
   (set (filter #(empty? (fg %)) (keys fg))))
 
-(defn free-keywords
-  "Return a set of free keywords - internal and external."
+(defn free-keys
+  "Return a set of free keys - internal and external."
   [fg]
-  (set/union (external-keywords fg)
-             (free-internal-keywords fg)))
+  (set/union (external-keys fg)
+             (free-internal-keys fg)))
 
 (declare extend-path)
 
-(defn keyword-paths
-  "Return set of all paths in graph from given keyword to external or free keywords.
+(defn key-paths
+  "Return set of all paths in graph from given key to external or free keys.
    Paths with loops are terminated with special {:loop [...]} marker."
   [fg base-key]
   (loop [paths [[base-key]]]
@@ -37,10 +41,27 @@
         (set paths)))))
 
 (defn graph-paths
-  "Return a map from graph keywords to path from these keywords to free ones.
+  "Return a map from graph keys to all key-paths to external or free keys.
    Paths with loops are terminated with special {:loop [...]} marker."
-  [fg]
-  (map-keys (partial keyword-paths fg) fg))
+  ([fg]
+     (graph-paths fg (keys fg)))
+  ([fg keys]
+     (map-keys (partial key-paths fg) (select-keys fg keys))))
+
+(defn key-transitive-deps
+  "Return set of all keys the given key depends on."
+  ([fg key]
+     (key-transitive-deps fg key (key-paths fg key)))
+  ([fg key paths]
+     (reduce into #{key} paths)))
+
+(defn graph-transitive-deps
+  "Return a map from given keys to their dependencies."
+  ([fg]
+     (graph-transitive-deps fg (graph-paths fg (keys fg))))
+  ([fg paths]
+     (map-keys (fn[k] (key-transitive-deps fg k (paths k)))
+               fg)))
 
 (defn- trim-path
   "Return rest of the path at the first occurance of key"
@@ -75,18 +96,18 @@
          (set))))
 
 (defn graph-order
-  "Return topological ordering of the graph as a vector of sets of keywords with same degree.
-   Ordering includes all free (internal and external) keywords."
+  "Return topological ordering of the graph as a vector of sets of keys with same degree.
+   Ordering includes all free (internal and external) keys."
   [fg]
-  (let [root-keywords (free-keywords fg)
-        ;; keywords with all parents eliminated can be eliminated too
+  (let [root-keys (free-keys fg)
+        ;; keys with all parents eliminated can be eliminated too
         ready? (fn [order [k req]] (every? (reduce into order) req))]
-    (loop [order [root-keywords]
-           remains (apply dissoc fg root-keywords)]
+    (loop [order [root-keys]
+           remains (apply dissoc fg root-keys)]
       (if (not (seq remains))
-        ;; if all keywords are eliminated, return resulting order
+        ;; if all keys are eliminated, return resulting order
         {:order order}
-        ;; keywords to eliminate
+        ;; keys to eliminate
         (let [eliminate (map first (filter (partial ready? order) remains))]
           (if (empty? eliminate)
             ;; nothing can be eliminated - return order and remains
@@ -96,3 +117,9 @@
             ;; eliminate and continue
             (recur (conj order (set eliminate))
                    (apply dissoc remains eliminate))))))))
+
+(defn filter-order
+  "Return order containing only required keys."
+  [order required-keys]
+  (map (fn [stage] (set/intersection stage required-keys))
+       order))
