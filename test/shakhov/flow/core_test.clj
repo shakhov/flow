@@ -74,7 +74,7 @@
   (is (= {:x 4 :y 5 :z 6 :a -4 :b 11 'c -11/4 "d" -33/2 :e -41/2}
          (eager-flow {:x 4 :y 5 :z 6}))))
 
-(deftest eager-flow-eval-override-test
+(deftest eager-flow-override-test
   ;; Some keys can be overridden by input map keys.
   ;; Overridden value is used to evaluate dependent keys.
   (is (= {:x 1 :y 2 :z 3 :a -1 :b 5 'c 100 "d" 300 :e 299}
@@ -113,7 +113,19 @@
 (deftest lazy-flow-test
   (is (fn? lazy-flow)))
 
-(deftest lazy-flow-eval-test
+;; Get single keys
+(deftest lazy-flow-keys-test
+  (is (= 1 ((lazy-flow {:x 1 :y 2 :z 3}) :x)))
+  (is (= 2 ((lazy-flow {:x 1 :y 2 :z 3}) :y)))
+  (is (= 3 ((lazy-flow {:x 1 :y 2 :z 3}) :z)))
+  (is (= -1 ((lazy-flow {:x 1 :y 2 :z 3}) :a)))
+  (is (= 5 ((lazy-flow {:x 1 :y 2 :z 3}) :b)))
+  (is (= -5 ((lazy-flow {:x 1 :y 2 :z 3}) 'c)))
+  (is (= -15 ((lazy-flow {:x 1 :y 2 :z 3}) "d")))
+  (is (= -16 ((lazy-flow {:x 1 :y 2 :z 3}) :e))))
+
+;; In a lazy style evaluaion only required keys are evaluated
+(deftest lazy-flow-log-test
   (reset! flow-log #{})
   ;; evaluate single key
   (is (= 11 ((lazy-flow {:x 4 :y 5 :z 6}) :b)))
@@ -131,7 +143,7 @@
 ;; Input map keys can override outputs
 ;; When overridden key acts as a bridge in a flow graph
 ;; keys in a separated sucomponent are ignored
-(deftest lazy-flow-override-test
+(deftest lazy-flow-override-log-test
   (reset! flow-log #{})
   (is (= #{} @flow-log))
   ;; override 'c
@@ -141,19 +153,31 @@
 
 ;; Call a compilled lazy flow function to produce lazy map
 ;; None of its keys are evaluated at this timex
-(def lazy-flow-map (lazy-flow {:x 1 :y 2 :z 3}))
+(def lazy-flow-map-1 (lazy-flow {:x 1 :y 2 :z 3}))
+(def lazy-flow-map-2 (lazy-flow {:x 4 :y 5 :z 6}))
+
+;; Get keys from the same map
+(deftest lazy-flow-map-keys-test
+  (is (= 1 (lazy-flow-map-1 :x)))
+  (is (= 2 (lazy-flow-map-1 :y)))
+  (is (= 3 (lazy-flow-map-1 :z)))
+  (is (= -1 (lazy-flow-map-1 :a)))
+  (is (= 5 (lazy-flow-map-1 :b)))
+  (is (= -5 (lazy-flow-map-1 'c)))
+  (is (= -15 (lazy-flow-map-1 "d")))
+  (is (= -16 (lazy-flow-map-1 :e))))
 
 ;; Key values in a lazy map are evaluated and memoized first time they're needed.
-(deftest lazy-flow-map-test
+(deftest lazy-flow-map-log-test
   (reset! flow-log #{})
   ;; get the :b key value
-  (is (= 5 (:b lazy-flow-map)))
+  (is (= 11 (:b lazy-flow-map-2)))
   ;; only :b key was evaluated
   (is (= #{:b} @flow-log))
   ;; now reset the log
   (reset! flow-log #{})
   ;; get 'c' key value
-  (is (= -5 ('c lazy-flow-map)))
+  (is (= -11/4 ('c lazy-flow-map-2)))
   ;; only :a and 'c keys were evaluated, but not :b
   ;; each key function is called only once since in the lazy-map
   (is (= #{:a 'c} @flow-log)))
