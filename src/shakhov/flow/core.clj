@@ -65,17 +65,27 @@
   [flow]
   (map-vals (partial fnk-inputs flow) flow))
 
-(defn evaluate-order [flow order input-map inputs]
+(defn evaluate-order [flow order input-map inputs & {:keys [parallel]}]
   "Evaluate flow fnks in the given order using input map values.
    Return a map from keys to values. Output map includes all input keys."
   (assert (every? input-map inputs))
-  (reduce (fn [output-map eval-stage]
-            (into output-map
-                  (map (fn [key]
-                         [key (or (input-map key)
-                                  ((flow key) output-map))])
-                       eval-stage)))
-          input-map order))
+  (let [create-map (if parallel
+                     lazy-map/create-lazy-map
+                     identity)
+        eval-key (if parallel
+                   (fn [key input-map]
+                     (let [f (future ((flow key) input-map))]
+                       (delay @f)))
+                   (fn [key input-map] ((flow key) input-map)))]
+    (reduce (fn [output-map stage-keys]
+              (into output-map
+                    (create-map
+                     (zipmap stage-keys
+                             (map (fn [key]
+                                    (or (input-map key)
+                                        (eval-key key output-map)))
+                                  stage-keys)))))
+            (create-map input-map) order)))
 
 (def eager-compile
   "Renturn compiled flow function. The function takes map of input values
@@ -87,8 +97,8 @@
            inputs (graph/external-keys fg)]
       (when-not (empty? remains)
         (assert (empty? (graph/graph-loops (select-keys fg remains)))))
-      (fn [input-map]
-        (evaluate-order flow order input-map inputs)))))
+      (fn [input-map & {:keys [parallel]}]
+        (evaluate-order flow order input-map inputs :parallel parallel)))))
 
 (defn- fnk-memoize [memo k f]
   (with-meta 
@@ -121,7 +131,7 @@
       (when-not (empty? remains)
         (assert (empty? (graph/graph-loops (select-keys fg remains)))))
       ; Function to return
-      (fn [input-map]
+      (fn [input-map & {:keys [parallel]}]
         (let [output-map (atom input-map)
               flow-memo  (map-map (partial fnk-memoize output-map) flow)
               suborders  (key-suborders fg order flow-paths (keys input-map))]
@@ -129,7 +139,8 @@
            (merge (map-keys (fn [k]
                               (delay (or (@output-map k)
                                          ((evaluate-order flow-memo   ((:orders suborders) k)
-                                                          @output-map ((:inputs suborders) k))
+                                                          @output-map ((:inputs suborders) k)
+                                                          :parallel parallel)
                                           k))))
                             flow)
                   input-map)))))))
