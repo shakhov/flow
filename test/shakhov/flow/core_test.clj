@@ -74,6 +74,17 @@
   (is (= {:x 4 :y 5 :z 6 :a -4 :b 11 'c -11/4 "d" -33/2 :e -41/2}
          (eager-flow {:x 4 :y 5 :z 6}))))
 
+(defn- lazy-map= [a b]
+  (and (= (set (keys a)) (set (keys b)))
+       (every? #(= (get a %) (get b %)) (keys b))))
+
+(deftest eager-flow-parallel-eval-test
+  ;; Given an input map eager function returns map of all inputs and outputs
+  (is (lazy-map= {:x 1 :y 2 :z 3 :a -1 :b 5 'c -5 "d" -15 :e -16}
+         (eager-flow {:x 1 :y 2 :z 3} :parallel true)))
+  (is (lazy-map= {:x 4 :y 5 :z 6 :a -4 :b 11 'c -11/4 "d" -33/2 :e -41/2}
+         (eager-flow {:x 4 :y 5 :z 6} :parallel true))))
+
 (deftest eager-flow-override-test
   ;; Some keys can be overridden by input map keys.
   ;; Overridden value is used to evaluate dependent keys.
@@ -115,14 +126,13 @@
 
 ;; Get single keys
 (deftest lazy-flow-keys-test
-  (is (= 1 ((lazy-flow {:x 1 :y 2 :z 3}) :x)))
-  (is (= 2 ((lazy-flow {:x 1 :y 2 :z 3}) :y)))
-  (is (= 3 ((lazy-flow {:x 1 :y 2 :z 3}) :z)))
-  (is (= -1 ((lazy-flow {:x 1 :y 2 :z 3}) :a)))
-  (is (= 5 ((lazy-flow {:x 1 :y 2 :z 3}) :b)))
-  (is (= -5 ((lazy-flow {:x 1 :y 2 :z 3}) 'c)))
-  (is (= -15 ((lazy-flow {:x 1 :y 2 :z 3}) "d")))
-  (is (= -16 ((lazy-flow {:x 1 :y 2 :z 3}) :e))))
+  (is (lazy-map= {:x 1 :y 2 :z 3 :a -1 :b 5 'c -5 "d" -15 :e -16}
+                 (lazy-flow {:x 1 :y 2 :z 3}))))
+
+;; With parallel evaluation option
+(deftest lazy-flow-keys-parallel-test
+  (is (lazy-map= {:x 1 :y 2 :z 3 :a -1 :b 5 'c -5 "d" -15 :e -16}
+                 (lazy-flow {:x 1 :y 2 :z 3} :parallel true))))
 
 ;; In a lazy style evaluaion only required keys are evaluated
 (deftest lazy-flow-log-test
@@ -179,5 +189,5 @@
   ;; get 'c' key value
   (is (= -11/4 ('c lazy-flow-map-2)))
   ;; only :a and 'c keys were evaluated, but not :b
-  ;; each key function is called only once since in the lazy-map
+  ;; each key function is called only once
   (is (= #{:a 'c} @flow-log)))
