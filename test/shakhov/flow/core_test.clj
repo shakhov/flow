@@ -47,7 +47,7 @@
   (flow
    {:a  ([x] (- x))
     :b  ([y z] (+ y z))
-    'c  ({:keys [a b alpha]
+    c  ({:keys [a b alpha]
           ;; default values for 'a' and 'b' can be defined
           ;; but these are ignored during flow evaluation
           :or {a 0 b 0 alpha 1}}
@@ -95,7 +95,7 @@
              (- x))
       :b  ([y z] (log-key :b)
              (+ y z))
-      'c  ({:keys [a b] :or {a 0 b 0}}
+      c  ({:keys [a b] :or {a 0 b 0}}
            (log-key 'c)
            (/ b a))
       "d" ({z :z :syms [c]}

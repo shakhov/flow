@@ -55,9 +55,10 @@
   "Return new flow. Flow is a map from keys to fnks."
   [flow-map]
   {:pre [(map? flow-map)]}
-  (into {} (map (fn [[key decl]]
-                  [key `(fnk ~@decl)])
-                flow-map)))
+  `(hash-map
+    ~@(mapcat (fn [[key decl]]
+                [`(quote ~key) `(fnk ~@decl)])
+              flow-map)))
 
 (defn flow-graph
   "Return map from flow keys to their dependencies.
