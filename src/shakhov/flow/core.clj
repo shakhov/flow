@@ -28,6 +28,19 @@
                      (set (map keyword (set/intersection key-names default-names)))
                      (set (vals (select-keys rest-bindings default-names))))}))
 
+(defn assert-inputs
+  [input-map required-keys]
+  (when-not (every? input-map required-keys)
+    (throw (new Exception (str "Missing input keys: "
+                               (set/difference required-keys (set (keys input-map))))))))
+
+(defn safe-order [fg & {paths :paths}]
+  (let [{:keys [order remains]} (graph/graph-order fg)
+        inputs (graph/external-keys fg)]
+    (when-not (empty? remains)
+      (let [loops (graph/graph-loops (select-keys fg remains) :paths paths)]
+        (throw (new Exception (str "Graph contains cycles: " loops)))))
+    order))
 
 (defmacro fnk
   "Return fnk - a keyword function. The function takes single map
@@ -38,7 +51,7 @@
         {:keys [required-keys optional-keys]} (destructure-bindings binding-map)]
     `(with-meta
        (fn [input-map#]
-         (assert (every? input-map# '~required-keys))
+         (assert-inputs input-map# '~required-keys)
          (let [~binding-map input-map#]
            ~@body))
        {::required-keys '~required-keys
@@ -71,7 +84,7 @@
    Return a map from keys to values. Output map includes all input keys."
 
   (let [inputs (or inputs (graph/external-keys (flow-graph flow)))]
-    (assert (every? input-map inputs)))
+    (assert-inputs input-map inputs))
   
   (let [create-map (if parallel
                      lazy-map/create-lazy-map
@@ -98,10 +111,8 @@
    Graph ordering and testing graph for loops takes place only once."
   [flow]
   (let [fg (flow-graph flow)
-        {:keys [order remains]} (graph/graph-order fg)
+        order  (safe-order fg)
         inputs (graph/external-keys fg)]
-    (when-not (empty? remains)
-      (assert (empty? (graph/graph-loops (select-keys fg remains)))))
     (fn [input-map & {:keys [parallel]}]
       (evaluate-order flow order input-map :inputs inputs :parallel parallel))))
 
@@ -131,10 +142,8 @@
    all required flow functions are called in proper order. Each key function is evaluated only once."
   [flow]
   (let [fg (flow-graph flow)
-        {:keys [order remains]} (graph/graph-order fg)
-        flow-paths (graph/graph-paths fg)]
-    (when-not (empty? remains)
-      (assert (empty? (graph/graph-loops (select-keys fg remains)))))
+        flow-paths (graph/graph-paths fg)
+        order (safe-order fg :paths flow-paths)]
     ; Function to return
     (fn [input-map & {:keys [parallel]}]
       (let [output-map (atom input-map)
