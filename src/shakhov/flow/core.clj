@@ -88,18 +88,18 @@
                                   stage-keys)))))
             (create-map input-map) order)))
 
-(def eager-compile
+(defn eager-compile
   "Renturn compiled flow function. The function takes map of input values
    and returns the result of evaluating flow fnks in precalculated order.
    Graph ordering and testing graph for loops takes place only once."
-  (fn [flow]
-    (let [fg (flow-graph flow)
-          {:keys [order remains]} (graph/graph-order fg)
-           inputs (graph/external-keys fg)]
-      (when-not (empty? remains)
-        (assert (empty? (graph/graph-loops (select-keys fg remains)))))
-      (fn [input-map & {:keys [parallel]}]
-        (evaluate-order flow order input-map inputs :parallel parallel)))))
+  [flow]
+  (let [fg (flow-graph flow)
+        {:keys [order remains]} (graph/graph-order fg)
+        inputs (graph/external-keys fg)]
+    (when-not (empty? remains)
+      (assert (empty? (graph/graph-loops (select-keys fg remains)))))
+    (fn [input-map & {:keys [parallel]}]
+      (evaluate-order flow order input-map inputs :parallel parallel))))
 
 (defn- fnk-memoize [memo k f]
   (with-meta 
@@ -121,30 +121,29 @@
     {:orders (map-keys #(graph/filter-order order (key-deps %)) fg)
      :inputs (map-keys #(set/intersection (graph/external-keys fg) (key-deps %)) fg)}))
 
-(def lazy-compile
+(defn lazy-compile
   "Return lazy compiled flow function. The function takes a map of input values
    and returns a lazy-map of delayed evaluations. Each time map key's value is needed,
-   all required flow functions are called in proper order. Each key function evaluates only once."
-  (fn [flow]
-    (let [fg (flow-graph flow)
-          {:keys [order remains]} (graph/graph-order fg)
-          flow-paths (graph/graph-paths fg)]
-      (when-not (empty? remains)
-        (assert (empty? (graph/graph-loops (select-keys fg remains)))))
-      ; Function to return
-      (fn [input-map & {:keys [parallel]}]
-        (let [output-map (atom input-map)
-              flow-memo  (map-map (partial fnk-memoize output-map) flow)
-              suborders  (key-suborders fg order flow-paths (keys input-map))]
-          (lazy-map/create-lazy-map
-           (merge (map-keys (fn [k]
-                              (delay (or (@output-map k)
-                                         ((evaluate-order flow-memo   ((:orders suborders) k)
-                                                          @output-map ((:inputs suborders) k)
-                                                          :parallel parallel)
-                                          k))))
-                            flow)
-                  input-map)))))))
+   all required flow functions are called in proper order. Each key function is evaluated only once."
+  [flow]
+  (let [fg (flow-graph flow)
+        {:keys [order remains]} (graph/graph-order fg)
+        flow-paths (graph/graph-paths fg)]
+    (when-not (empty? remains)
+      (assert (empty? (graph/graph-loops (select-keys fg remains)))))
+    ; Function to return
+    (fn [input-map & {:keys [parallel]}]
+      (let [output-map (atom input-map)
+            flow-memo  (map-map (partial fnk-memoize output-map) flow)
+            suborders  (key-suborders fg order flow-paths (keys input-map))
+            eval-suborder (fn [k] (evaluate-order
+                                   flow-memo   ((:orders suborders) k)
+                                   @output-map ((:inputs suborders) k)
+                                   :parallel parallel))
+            delayed-flow (map-keys (fn [k] (delay (get @output-map k (get (eval-suborder k) k))))
+                                   flow)]
+        (lazy-map/create-lazy-map
+         (merge delayed-flow input-map))))))
 
 (defn flow->dot
   "Print representation of flow in 'dot' format to standard output."
