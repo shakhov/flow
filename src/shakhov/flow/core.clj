@@ -66,10 +66,13 @@
   [flow]
   (map-vals (partial fnk-inputs flow) flow))
 
-(defn evaluate-order [flow order input-map inputs & {:keys [parallel]}]
+(defn- evaluate-order [flow order input-map & {:keys [parallel inputs]}]
   "Evaluate flow fnks in the given order using input map values.
    Return a map from keys to values. Output map includes all input keys."
-  (assert (every? input-map inputs))
+
+  (let [inputs (or inputs (graph/external-keys (flow-graph flow)))]
+    (assert (every? input-map inputs)))
+  
   (let [create-map (if parallel
                      lazy-map/create-lazy-map
                      identity)
@@ -78,6 +81,7 @@
                      (let [f (future ((flow key) input-map))]
                        (delay @f)))
                    (fn [key input-map] ((flow key) input-map)))]
+    
     (reduce (fn [output-map stage-keys]
               (into output-map
                     (create-map
@@ -99,7 +103,7 @@
     (when-not (empty? remains)
       (assert (empty? (graph/graph-loops (select-keys fg remains)))))
     (fn [input-map & {:keys [parallel]}]
-      (evaluate-order flow order input-map inputs :parallel parallel))))
+      (evaluate-order flow order input-map :inputs inputs :parallel parallel))))
 
 (defn- fnk-memoize [memo k f]
   (with-meta 
@@ -137,9 +141,8 @@
             flow-memo  (map-map (partial fnk-memoize output-map) flow)
             suborders  (key-suborders fg order flow-paths (keys input-map))
             eval-suborder (fn [k] (evaluate-order
-                                   flow-memo   ((:orders suborders) k)
-                                   @output-map ((:inputs suborders) k)
-                                   :parallel parallel))
+                                   flow-memo ((:orders suborders) k) @output-map
+                                   :inputs ((:inputs suborders) k) :parallel parallel))
             delayed-flow (map-keys (fn [k] (delay (get @output-map k (get (eval-suborder k) k))))
                                    flow)]
         (lazy-map/create-lazy-map
