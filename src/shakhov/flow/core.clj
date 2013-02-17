@@ -64,14 +64,45 @@
              (set/intersection (::optional-keys (meta fnk))
                                (set (keys flow)))))
 
+(defn- destructure-set-keys
+  [set-subflow]
+  (mapcat (fn [[ks form]]
+            (let [tmp-key (gensym "key__")]
+              (cons `[(quote ~tmp-key) (fnk ~@form)]
+                    (map (fn [k] [k `(fnk {:syms [~tmp-key]} ~tmp-key)])
+                         ks))))
+          set-subflow))
+
+(defn- destructure-destr-keys
+  [map-subflow]
+  (mapcat (fn [[ds form]]
+            (let [[k1 f1 & destr] (destructure [ds `(fnk ~@form)])
+                    destr (dissoc (apply hash-map destr) k1)
+                    destr-keys (into #{k1} (keys destr))
+                    deps  (map-vals (fn [form] 
+                                      (let [deps (if (coll? form)
+                                                   (set/intersection destr-keys (set form))
+                                                   [form])]
+                                        (if (empty? deps) [] {:syms (vec deps)})))
+                                    destr)]
+              (cons `[(quote ~k1) ~f1]
+                    (map (fn [[k f]] `[(quote ~k) (fnk ~(deps k) ~f)])
+                         destr))))
+          map-subflow))
+
 (defmacro flow
   "Return new flow. Flow is a map from keys to fnks."
   [flow-map]
   {:pre [(map? flow-map)]}
-  `(hash-map
-    ~@(mapcat (fn [[key decl]]
-                [`(quote ~key) `(fnk ~@decl)])
-              flow-map)))
+  (let [all-keys (keys flow-map)
+        single-keys (filter (complement coll?) all-keys)
+        set-keys    (filter set? all-keys)
+        destr-keys  (filter #(or (map? %) (vector? %)) all-keys)]
+    `(merge
+      ~(into {} (map (fn [[key form]] `[(quote ~key) (fnk ~@form)])
+                     (select-keys flow-map single-keys)))
+      ~(into {} (destructure-set-keys (select-keys flow-map set-keys)))
+      ~(into {} (destructure-destr-keys (select-keys flow-map destr-keys))))))
 
 (defn flow-graph
   "Return map from flow keys to their dependencies.
@@ -156,6 +187,14 @@
                                    flow)]
         (lazy-map/create-lazy-map
          (merge delayed-flow input-map))))))
+
+(defn filter-gensyms
+  "Return map with all 'gensym' keys removed."
+  [m]
+  (select-keys m (remove #(or (.contains (name %) "map__")
+                              (.contains (name %) "vec__")
+                              (.contains (name %) "key__"))
+                         (keys m))))
 
 (defn flow->dot
   "Print representation of flow in 'dot' format to standard output."
