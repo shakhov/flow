@@ -191,3 +191,17 @@
   ;; only :a and 'c keys were evaluated, but not :b
   ;; each key function is called only once
   (is (= #{:a 'c} @flow-log)))
+
+(let [flow-destructure
+      (flow {:a ([] 1)
+             #{:b 'c "d"} ([] 2)
+             [a1 [a2 a3 :as v1] & ar :as v0]
+             ({a :a :keys[b] :syms [c] :strs [d]}
+              [a [b c] d])
+             {k :k :keys [l] :syms [m] :strs [n]}
+             ([] '{:k 1 :l 2 m 3 "n" 4})})
+      eager-flow-destructure (eager-compile flow-destructure)]
+
+  (deftest flow-destructure-test
+    (is (= {:a 1 :b 2 'c 2 "d" 2 'a1 1 'a2 2 'a3 2 'v1 [2 2] 'ar [2] 'v0 [1 [2 2] 2] 'k 1 'l 2 'm 3 'n 4}
+           (filter-gensyms (eager-flow-destructure {}))))))
