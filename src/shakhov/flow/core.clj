@@ -110,6 +110,24 @@
   [flow]
   (map-vals (partial fnk-inputs flow) flow))
 
+(defn filter-gensyms
+  "Return map with all 'gensym' keys removed."
+  [m]
+  (select-keys m (remove #(or (.contains (name %) "map__")
+                              (.contains (name %) "vec__")
+                              (.contains (name %) "key__"))
+                         (keys m))))
+
+(defn sorted-map-by-order
+  "Return map sorted by given order."
+  [m order]
+  (let [order (apply concat order)]
+    (into (sorted-map-by
+           (fn [k1 k2]
+             (compare (.indexOf order k1)
+                      (.indexOf order k2))))
+          m)))
+
 (defn- evaluate-order [flow order input-map & {:keys [parallel inputs]}]
   "Evaluate flow fnks in the given order using input map values.
    Return a map from keys to values. Output map includes all input keys."
@@ -145,7 +163,7 @@
         order  (safe-order fg)
         inputs (graph/external-keys fg)]
     (fn [input-map & {:keys [parallel]}]
-      (evaluate-order flow order input-map :inputs inputs :parallel parallel))))
+      (filter-gensyms (evaluate-order flow order input-map :inputs inputs :parallel parallel)))))
 
 (defn- fnk-memoize [memo k f]
   (with-meta 
@@ -186,26 +204,8 @@
             delayed-flow (map-keys (fn [k] (delay (get @output-map k (get (eval-suborder k) k))))
                                    flow)]
         (lazy-map/create-lazy-map
-         (merge delayed-flow input-map))))))
-
-(defn filter-gensyms
-  "Return map with all 'gensym' keys removed."
-  [m]
-  (select-keys m (remove #(or (.contains (name %) "map__")
-                              (.contains (name %) "vec__")
-                              (.contains (name %) "key__"))
-                         (keys m))))
-
-(defn sorted-map-by-order
-  "Return map sorted by given order."
-  [m order]
-  (let [order (apply concat order)]
-    (into (sorted-map-by
-           (fn [k1 k2]
-             (compare (.indexOf order k1)
-                      (.indexOf order k2))))
-          m)))
-
+         (merge (filter-gensyms delayed-flow)
+                input-map))))))
 
 (defn flow->dot
   "Print representation of flow in 'dot' format to standard output."

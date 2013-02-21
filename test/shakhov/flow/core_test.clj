@@ -204,4 +204,4 @@
 
   (deftest flow-destructure-test
     (is (= {:a 1 :b 2 'c 2 "d" 2 'a1 1 'a2 2 'a3 2 'v1 [2 2] 'ar [2] 'v0 [1 [2 2] 2] 'k 1 'l 2 'm 3 'n 4}
-           (filter-gensyms (eager-flow-destructure {}))))))
+           (eager-flow-destructure {})))))
