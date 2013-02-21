@@ -68,15 +68,15 @@
   [set-subflow]
   (mapcat (fn [[ks form]]
             (let [tmp-key (gensym "key__")]
-              (cons `[(quote ~tmp-key) (fnk ~@form)]
-                    (map (fn [k] [`(quote ~k) `(fnk {:syms [~tmp-key]} ~tmp-key)])
+              (cons `[(quote ~tmp-key) ~form]
+                    (map (fn [k] `[(quote ~k) (fnk {:syms [~tmp-key]} ~tmp-key)])
                          ks))))
           set-subflow))
 
 (defn- destructure-destr-keys
   [map-subflow]
   (mapcat (fn [[ds form]]
-            (let [[k1 f1 & destr] (destructure [ds `(fnk ~@form)])
+            (let [[k1 f1 & destr] (destructure [ds form])
                     destr (dissoc (apply hash-map destr) k1)
                     destr-keys (into #{k1} (keys destr))
                     deps  (map-vals (fn [form] 
@@ -99,7 +99,7 @@
         set-keys    (filter set? all-keys)
         destr-keys  (filter #(or (map? %) (vector? %)) all-keys)]
     `(merge
-      ~(into {} (map (fn [[key form]] `[(quote ~key) (fnk ~@form)])
+      ~(into {} (map (fn [[key form]] `[(quote ~key) ~form])
                      (select-keys flow-map single-keys)))
       ~(into {} (destructure-set-keys (select-keys flow-map set-keys)))
       ~(into {} (destructure-destr-keys (select-keys flow-map destr-keys))))))

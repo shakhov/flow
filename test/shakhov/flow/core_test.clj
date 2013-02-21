@@ -45,15 +45,15 @@
 ;; Fnk's inputs are used to determine key dependencies and evaluation order.
 (def flow-1
   (flow
-   {:a  ([x] (- x))
-    :b  ([y z] (+ y z))
-    c  ({:keys [a b alpha]
+   {:a  (fnk [x] (- x))
+    :b  (fnk [y z] (+ y z))
+    c  (fnk {:keys [a b alpha]
           ;; default values for 'a' and 'b' can be defined
           ;; but these are ignored during flow evaluation
           :or {a 0 b 0 alpha 1}}
          (/ b a alpha))
-    "d" ({z :z :syms [c]} (* c z))
-    :e  ({:keys [a] :strs [d]} (+ a d))}))
+    "d" (fnk {z :z :syms [c]} (* c z))
+    :e  (fnk {:keys [a] :strs [d]} (+ a d))}))
 
 (deftest fnk-inputs-test
   ;; defalut values for fnk keys are ignored since flow contains same keys
@@ -102,17 +102,17 @@
 ;; Same flow as above with some simple logging
 (def flow-2
     (flow
-     {:a  ([x] (log-key :a)
+     {:a  (fnk [x] (log-key :a)
              (- x))
-      :b  ([y z] (log-key :b)
+      :b  (fnk [y z] (log-key :b)
              (+ y z))
-      c  ({:keys [a b] :or {a 0 b 0}}
+      c  (fnk {:keys [a b] :or {a 0 b 0}}
            (log-key 'c)
            (/ b a))
-      "d" ({z :z :syms [c]}
+      "d" (fnk {z :z :syms [c]}
            (log-key "d")
            (* c z))
-      :e  ({:keys [a] :strs [d]}
+      :e  (fnk {:keys [a] :strs [d]}
            (log-key :e)
            (+ a d))}))
 
@@ -192,14 +192,18 @@
   ;; each key function is called only once
   (is (= #{:a 'c} @flow-log)))
 
+;; Flow macro accepts some destructuring forms
 (let [flow-destructure
-      (flow {:a ([] 1)
-             #{:b c "d"} ([] 2)
+      (flow {:a (fnk [] 1)
+             ;; All keys in a set depend on the same fnk via gensymed key
+             #{:b c "d"} (fnk [] 2)
+             ;; Vector and map binding forms are destructured with clojure.core/destructure
+             ;; and produce symbol keywords depending on transietn gensymed keys created by destructure
              [a1 [a2 a3 :as v1] & ar :as v0]
-             ({a :a :keys[b] :syms [c] :strs [d]}
+             (fnk {a :a :keys[b] :syms [c] :strs [d]}
               [a [b c] d])
              {k :k :keys [l] :syms [m] :strs [n]}
-             ([] '{:k 1 :l 2 m 3 "n" 4})})
+             (fnk [] {:k 1 :l 2 'm 3 "n" 4})})
       eager-flow-destructure (eager-compile flow-destructure)
       lazy-flow-destructure (lazy-compile flow-destructure)]
 
@@ -207,4 +211,29 @@
     (is (= {:a 1 :b 2 'c 2 "d" 2 'a1 1 'a2 2 'a3 2 'v1 [2 2] 'ar [2] 'v0 [1 [2 2] 2] 'k 1 'l 2 'm 3 'n 4}
            (eager-flow-destructure {})))
     (is (lazy-map= {:a 1 :b 2 'c 2 "d" 2 'a1 1 'a2 2 'a3 2 'v1 [2 2] 'ar [2] 'v0 [1 [2 2] 2] 'k 1 'l 2 'm 3 'n 4}
-           (lazy-flow-destructure {})))))
+                   (lazy-flow-destructure {})))))
+
+;; Since 0.1.1 version flow maro does not modify flow key values and does destructuring only
+;; So fnks can be produced in place by any valid clojure code
+
+(let [subroutine-flow (flow {:d1 (fnk [v1 v2] (+ v1 v2))
+                             :d2 (fnk [v3 v4] (- v3 v4))
+                             :d3 (fnk [d1 d2] (* d1 d2))})
+      ;; Define flow compiling subflow 
+      flow-with-lets (flow {:a (fnk [x] (inc x))
+                            :b (fnk [y] (dec y))
+                            ;; Eager compile, call fnk, destructure result
+                            {:keys [d1 d2]}
+                            (let [subroutine (eager-compile subroutine-flow)]
+                              (fnk [x y a b]
+                                   (subroutine {:v1 x :v2 b :v3 y :v4 a})))
+                            ;; Lazy compile, call fnk, select desired key 
+                            :l (let [subroutine (lazy-compile subroutine-flow)]
+                                 (fnk [x y a b]
+                                      ((subroutine {:v1 x :v2 b :v3 y :v4 a}) :d2)))
+                            ;; Use destructured symbol-keys
+                            :sum (fnk {:syms [d1 d2]} (+ d1 d2))})]
+  
+  (deftest flow-with-lets-test
+    (is (= {:x 15.0 :y 73.0 :a 16.0 :b 72.0 'd1 87.0 'd2 57.0 :l 57.0 :sum 144.0}
+           ((eager-compile flow-with-lets) {:x 15.0 :y 73.0})))))
