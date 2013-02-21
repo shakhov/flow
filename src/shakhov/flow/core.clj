@@ -196,6 +196,17 @@
                               (.contains (name %) "key__"))
                          (keys m))))
 
+(defn sorted-map-by-order
+  "Return map sorted by given order."
+  [m order]
+  (let [order (apply concat order)]
+    (into (sorted-map-by
+           (fn [k1 k2]
+             (compare (.indexOf order k1)
+                      (.indexOf order k2))))
+          m)))
+
+
 (defn flow->dot
   "Print representation of flow in 'dot' format to standard output."
   [flow]
