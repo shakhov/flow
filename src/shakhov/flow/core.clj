@@ -69,7 +69,7 @@
   (mapcat (fn [[ks form]]
             (let [tmp-key (gensym "key__")]
               (cons `[(quote ~tmp-key) (fnk ~@form)]
-                    (map (fn [k] [k `(fnk {:syms [~tmp-key]} ~tmp-key)])
+                    (map (fn [k] [`(quote ~k) `(fnk {:syms [~tmp-key]} ~tmp-key)])
                          ks))))
           set-subflow))
 

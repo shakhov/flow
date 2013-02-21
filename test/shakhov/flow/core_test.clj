@@ -194,7 +194,7 @@
 
 (let [flow-destructure
       (flow {:a ([] 1)
-             #{:b 'c "d"} ([] 2)
+             #{:b c "d"} ([] 2)
              [a1 [a2 a3 :as v1] & ar :as v0]
              ({a :a :keys[b] :syms [c] :strs [d]}
               [a [b c] d])
