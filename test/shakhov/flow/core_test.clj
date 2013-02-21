@@ -200,8 +200,11 @@
               [a [b c] d])
              {k :k :keys [l] :syms [m] :strs [n]}
              ([] '{:k 1 :l 2 m 3 "n" 4})})
-      eager-flow-destructure (eager-compile flow-destructure)]
+      eager-flow-destructure (eager-compile flow-destructure)
+      lazy-flow-destructure (lazy-compile flow-destructure)]
 
   (deftest flow-destructure-test
     (is (= {:a 1 :b 2 'c 2 "d" 2 'a1 1 'a2 2 'a3 2 'v1 [2 2] 'ar [2] 'v0 [1 [2 2] 2] 'k 1 'l 2 'm 3 'n 4}
-           (eager-flow-destructure {})))))
+           (eager-flow-destructure {})))
+    (is (lazy-map= {:a 1 :b 2 'c 2 "d" 2 'a1 1 'a2 2 'a3 2 'v1 [2 2] 'ar [2] 'v0 [1 [2 2] 2] 'k 1 'l 2 'm 3 'n 4}
+           (lazy-flow-destructure {})))))
