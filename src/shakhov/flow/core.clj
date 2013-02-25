@@ -110,13 +110,15 @@
   [flow]
   (map-vals (partial fnk-inputs flow) flow))
 
+(defn- gensym? [s]
+  (or (.contains (name s) "map__")
+      (.contains (name s) "vec__")
+      (.contains (name s) "key__")))
+
 (defn filter-gensyms
   "Return map with all 'gensym' keys removed."
   [m]
-  (select-keys m (remove #(or (.contains (name %) "map__")
-                              (.contains (name %) "vec__")
-                              (.contains (name %) "key__"))
-                         (keys m))))
+  (select-keys m (remove gensym? (keys m))))
 
 (defn sorted-map-by-order
   "Return map sorted by given order."
