@@ -1,4 +1,4 @@
-(defproject shakhov.flow "0.1.0-SNAPSHOT"
+(defproject shakhov.flow "0.1.1"
   :description "Function composition based on graph declarations."
   :url "http://github.com/shakhov/flow"
   :license {:name "Eclipse Public License"

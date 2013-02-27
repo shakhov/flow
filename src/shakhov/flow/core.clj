@@ -28,6 +28,19 @@
                      (set (map keyword (set/intersection key-names default-names)))
                      (set (vals (select-keys rest-bindings default-names))))}))
 
+(defn assert-inputs
+  [input-map required-keys]
+  (when-not (every? input-map required-keys)
+    (throw (new Exception (str "Missing input keys: "
+                               (set/difference required-keys (set (keys input-map))))))))
+
+(defn safe-order [fg & {paths :paths}]
+  (let [{:keys [order remains]} (graph/graph-order fg)
+        inputs (graph/external-keys fg)]
+    (when-not (empty? remains)
+      (let [loops (graph/graph-loops (select-keys fg remains) :paths paths)]
+        (throw (new Exception (str "Graph contains cycles: " loops)))))
+    order))
 
 (defmacro fnk
   "Return fnk - a keyword function. The function takes single map
@@ -38,7 +51,7 @@
         {:keys [required-keys optional-keys]} (destructure-bindings binding-map)]
     `(with-meta
        (fn [input-map#]
-         (assert (every? input-map# '~required-keys))
+         (assert-inputs input-map# '~required-keys)
          (let [~binding-map input-map#]
            ~@body))
        {::required-keys '~required-keys
@@ -46,49 +59,123 @@
 
 (defn fnk-inputs
   "Return set of keys required to evaluate fnk in the flow."
-  [flow fnk]
-  (set/union (::required-keys (meta fnk))
-             (set/intersection (::optional-keys (meta fnk))
-                               (set (keys flow)))))
+  ([fnk]
+     (select-keys (meta fnk) [::required-keys ::optional-keys]))
+  ([fnk flow]
+     (set/union (::required-keys (meta fnk))
+                (set/intersection (::optional-keys (meta fnk))
+                                  (set (keys flow))))))
+
+(defn- destructure-set-keys
+  [set-subflow]
+  (mapcat (fn [[ks form]]
+            (let [tmp-key (gensym "key__")]
+              (cons `[(quote ~tmp-key) ~form]
+                    (map (fn [k] `[(quote ~k) (fnk {:syms [~tmp-key]} ~tmp-key)])
+                         ks))))
+          set-subflow))
+
+(defn- make-flow-key [type key]
+  (case type
+    :keys (keyword (name key))
+    :syms `(quote ~key)
+    :strs (name key)
+    (throw (Exception. (str "Unknown key type: " type)))))
+
+(defn- destructure-destr-keys
+  [key-type map-subflow]
+  (mapcat (fn [[ds form]]
+            (let [[k1 f1 & destr] (destructure [ds form])
+                  destr (dissoc (apply hash-map destr) k1)
+                  destr-keys (into #{k1} (keys destr))
+                  deps  (map-vals (fn [form] 
+                                    (let [deps (if (coll? form)
+                                                 (set/intersection destr-keys (set form))
+                                                 [form])]
+                                      (if (empty? deps) [] {key-type (vec deps)})))
+                                  destr)]
+              (cons `[~(make-flow-key key-type k1) ~f1]
+                    (map (fn [[k f]] `[~(make-flow-key key-type k) (fnk ~(deps k) ~f)])
+                         destr))))
+          map-subflow))
 
 (defmacro flow
   "Return new flow. Flow is a map from keys to fnks."
-  [flow-map]
-  {:pre [(map? flow-map)]}
-  (into {} (map (fn [[key decl]]
-                  [key `(fnk ~@decl)])
-                flow-map)))
+  ([flow-map] `(flow :keys ~flow-map))
+  ([key-type flow-map]
+     {:pre [(map? flow-map)]}
+     (let [all-keys (keys flow-map)
+           single-keys (filter (complement coll?) all-keys)
+           set-keys    (filter set? all-keys)
+        destr-keys  (filter #(or (map? %) (vector? %)) all-keys)]
+       `(merge
+         ~(into {} (map (fn [[key form]] `[(quote ~key) ~form])
+                        (select-keys flow-map single-keys)))
+         ~(into {} (destructure-set-keys (select-keys flow-map set-keys)))
+         ~(into {} (destructure-destr-keys key-type (select-keys flow-map destr-keys)))))))
 
 (defn flow-graph
   "Return map from flow keys to their dependencies.
    Required keys of each fnk specify flow graph relationships"
   [flow]
-  (map-vals (partial fnk-inputs flow) flow))
+  (map-vals #(fnk-inputs % flow) flow))
 
-(defn evaluate-order [flow order input-map inputs]
+(defn- gensym? [s]
+  (or (.contains (name s) "map__")
+      (.contains (name s) "vec__")
+      (.contains (name s) "key__")))
+
+(defn filter-gensyms
+  "Return map with all 'gensym' keys removed."
+  [m]
+  (select-keys m (remove gensym? (keys m))))
+
+(defn sorted-map-by-order
+  "Return map sorted by given order."
+  [m order]
+  (let [order (apply concat order)]
+    (into (sorted-map-by
+           (fn [k1 k2]
+             (compare (.indexOf order k1)
+                      (.indexOf order k2))))
+          m)))
+
+(defn- evaluate-order [flow order input-map & {:keys [parallel inputs]}]
   "Evaluate flow fnks in the given order using input map values.
    Return a map from keys to values. Output map includes all input keys."
-  (assert (every? input-map inputs))
-  (reduce (fn [output-map eval-stage]
-            (into output-map
-                  (map (fn [key]
-                         [key (or (input-map key)
-                                  ((flow key) output-map))])
-                       eval-stage)))
-          input-map order))
 
-(def eager-compile
-  "Renturn compiled flow function. The function takes map of input values
+  (let [inputs (or inputs (graph/external-keys (flow-graph flow)))]
+    (assert-inputs input-map inputs))
+  
+  (let [create-map (if parallel
+                     lazy-map/create-lazy-map
+                     identity)
+        eval-key (if parallel
+                   (fn [key input-map]
+                     (let [f (future ((flow key) input-map))]
+                       (delay @f)))
+                   (fn [key input-map] ((flow key) input-map)))]
+    
+    (reduce (fn [output-map stage-keys]
+              (into output-map
+                    (create-map
+                     (zipmap stage-keys
+                             (map (fn [key]
+                                    (or (input-map key)
+                                        (eval-key key output-map)))
+                                  stage-keys)))))
+            (create-map input-map) order)))
+
+(defn eager-compile
+  "Return compiled flow function. The function takes map of input values
    and returns the result of evaluating flow fnks in precalculated order.
    Graph ordering and testing graph for loops takes place only once."
-  (fn [flow]
-    (let [fg (flow-graph flow)
-          {:keys [order remains]} (graph/graph-order fg)
-           inputs (graph/external-keys fg)]
-      (when-not (empty? remains)
-        (assert (empty? (graph/graph-loops (select-keys fg remains)))))
-      (fn [input-map]
-        (evaluate-order flow order input-map inputs)))))
+  [flow]
+  (let [fg (flow-graph flow)
+        order  (safe-order fg)
+        inputs (graph/external-keys fg)]
+    (fn [input-map & {:keys [parallel]}]
+      (filter-gensyms (evaluate-order flow order input-map :inputs inputs :parallel parallel)))))
 
 (defn- fnk-memoize [memo k f]
   (with-meta 
@@ -101,38 +188,36 @@
 
 (defn- key-suborders
   [fg order paths inputs]
-  (let [overriden (set/intersection
+  (let [overridden (set/intersection
                    (set inputs)
                    (set/difference (graph/internal-keys fg)
                                    (graph/free-internal-keys fg)))
-        key-paths (map-vals (partial filter #(not-any? overriden %)) paths)
+        key-paths (map-vals (partial filter #(not-any? overridden %)) paths)
         key-deps  (graph/graph-transitive-deps fg key-paths)]
     {:orders (map-keys #(graph/filter-order order (key-deps %)) fg)
      :inputs (map-keys #(set/intersection (graph/external-keys fg) (key-deps %)) fg)}))
 
-(def lazy-compile
+(defn lazy-compile
   "Return lazy compiled flow function. The function takes a map of input values
    and returns a lazy-map of delayed evaluations. Each time map key's value is needed,
-   all required flow functions are called in proper order. Each key function evaluates only once."
-  (fn [flow]
-    (let [fg (flow-graph flow)
-          {:keys [order remains]} (graph/graph-order fg)
-          flow-paths (graph/graph-paths fg)]
-      (when-not (empty? remains)
-        (assert (empty? (graph/graph-loops (select-keys fg remains)))))
-      ; Function to return
-      (fn [input-map]
-        (let [output-map (atom input-map)
-              flow-memo  (map-map (partial fnk-memoize output-map) flow)
-              suborders  (key-suborders fg order flow-paths (keys input-map))]
-          (lazy-map/create-lazy-map
-           (merge (map-keys (fn [k]
-                              (delay (or (@output-map k)
-                                         ((evaluate-order flow-memo   ((:orders suborders) k)
-                                                          @output-map ((:inputs suborders) k))
-                                          k))))
-                            flow)
-                  input-map)))))))
+   all required flow functions are called in proper order. Each key function is evaluated only once."
+  [flow]
+  (let [fg (flow-graph flow)
+        flow-paths (graph/graph-paths fg)
+        order (safe-order fg :paths flow-paths)]
+    ; Function to return
+    (fn [input-map & {:keys [parallel]}]
+      (let [output-map (atom input-map)
+            flow-memo  (map-map (partial fnk-memoize output-map) flow)
+            suborders  (key-suborders fg order flow-paths (keys input-map))
+            eval-suborder (fn [k] (evaluate-order
+                                   flow-memo ((:orders suborders) k) @output-map
+                                   :inputs ((:inputs suborders) k) :parallel parallel))
+            delayed-flow (map-keys (fn [k] (delay (get @output-map k (get (eval-suborder k) k))))
+                                   flow)]
+        (lazy-map/create-lazy-map
+         (merge (filter-gensyms delayed-flow)
+                input-map))))))
 
 (defn flow->dot
   "Print representation of flow in 'dot' format to standard output."
