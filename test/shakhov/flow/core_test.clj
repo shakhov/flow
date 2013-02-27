@@ -208,9 +208,9 @@
       lazy-flow-destructure (lazy-compile flow-destructure)]
 
   (deftest flow-destructure-test
-    (is (= {:a 1 :b 2 'c 2 "d" 2 'a1 1 'a2 2 'a3 2 'v1 [2 2] 'ar [2] 'v0 [1 [2 2] 2] 'k 1 'l 2 'm 3 'n 4}
+    (is (= {:a 1 :b 2 'c 2 "d" 2 :a1 1 :a2 2 :a3 2 :v1 [2 2] :ar [2] :v0 [1 [2 2] 2] :k 1 :l 2 :m 3 :n 4}
            (eager-flow-destructure {})))
-    (is (lazy-map= {:a 1 :b 2 'c 2 "d" 2 'a1 1 'a2 2 'a3 2 'v1 [2 2] 'ar [2] 'v0 [1 [2 2] 2] 'k 1 'l 2 'm 3 'n 4}
+    (is (lazy-map= {:a 1 :b 2 'c 2 "d" 2 :a1 1 ':a2 2 :a3 2 :v1 [2 2] :ar [2] :v0 [1 [2 2] 2] :k 1 :l 2 :m 3 :n 4}
                    (lazy-flow-destructure {})))))
 
 ;; Since 0.1.1 version flow maro does not modify flow key values and does destructuring only
@@ -231,9 +231,9 @@
                             :l (let [subroutine (lazy-compile subroutine-flow)]
                                  (fnk [x y a b]
                                       ((subroutine {:v1 x :v2 b :v3 y :v4 a}) :d2)))
-                            ;; Use destructured symbol-keys
-                            :sum (fnk {:syms [d1 d2]} (+ d1 d2))})]
+                            ;; Use destructured keys
+                            :sum (fnk [d1 d2] (+ d1 d2))})]
   
   (deftest flow-with-lets-test
-    (is (= {:x 15.0 :y 73.0 :a 16.0 :b 72.0 'd1 87.0 'd2 57.0 :l 57.0 :sum 144.0}
+    (is (= {:x 15.0 :y 73.0 :a 16.0 :b 72.0 :d1 87.0 :d2 57.0 :l 57.0 :sum 144.0}
            ((eager-compile flow-with-lets) {:x 15.0 :y 73.0})))))

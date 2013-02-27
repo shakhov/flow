@@ -75,36 +75,44 @@
                          ks))))
           set-subflow))
 
+(defn- make-flow-key [type key]
+  (case type
+    :keys (keyword (name key))
+    :syms `(quote ~key)
+    :strs (name key)
+    (throw (Exception. (str "Unknown key type: " type)))))
+
 (defn- destructure-destr-keys
-  [map-subflow]
+  [key-type map-subflow]
   (mapcat (fn [[ds form]]
             (let [[k1 f1 & destr] (destructure [ds form])
-                    destr (dissoc (apply hash-map destr) k1)
-                    destr-keys (into #{k1} (keys destr))
-                    deps  (map-vals (fn [form] 
-                                      (let [deps (if (coll? form)
-                                                   (set/intersection destr-keys (set form))
-                                                   [form])]
-                                        (if (empty? deps) [] {:syms (vec deps)})))
-                                    destr)]
-              (cons `[(quote ~k1) ~f1]
-                    (map (fn [[k f]] `[(quote ~k) (fnk ~(deps k) ~f)])
+                  destr (dissoc (apply hash-map destr) k1)
+                  destr-keys (into #{k1} (keys destr))
+                  deps  (map-vals (fn [form] 
+                                    (let [deps (if (coll? form)
+                                                 (set/intersection destr-keys (set form))
+                                                 [form])]
+                                      (if (empty? deps) [] {key-type (vec deps)})))
+                                  destr)]
+              (cons `[~(make-flow-key key-type k1) ~f1]
+                    (map (fn [[k f]] `[~(make-flow-key key-type k) (fnk ~(deps k) ~f)])
                          destr))))
           map-subflow))
 
 (defmacro flow
   "Return new flow. Flow is a map from keys to fnks."
-  [flow-map]
-  {:pre [(map? flow-map)]}
-  (let [all-keys (keys flow-map)
-        single-keys (filter (complement coll?) all-keys)
-        set-keys    (filter set? all-keys)
+  ([flow-map] `(flow :keys ~flow-map))
+  ([key-type flow-map]
+     {:pre [(map? flow-map)]}
+     (let [all-keys (keys flow-map)
+           single-keys (filter (complement coll?) all-keys)
+           set-keys    (filter set? all-keys)
         destr-keys  (filter #(or (map? %) (vector? %)) all-keys)]
-    `(merge
-      ~(into {} (map (fn [[key form]] `[(quote ~key) ~form])
-                     (select-keys flow-map single-keys)))
-      ~(into {} (destructure-set-keys (select-keys flow-map set-keys)))
-      ~(into {} (destructure-destr-keys (select-keys flow-map destr-keys))))))
+       `(merge
+         ~(into {} (map (fn [[key form]] `[(quote ~key) ~form])
+                        (select-keys flow-map single-keys)))
+         ~(into {} (destructure-set-keys (select-keys flow-map set-keys)))
+         ~(into {} (destructure-destr-keys key-type (select-keys flow-map destr-keys)))))))
 
 (defn flow-graph
   "Return map from flow keys to their dependencies.
