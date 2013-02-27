@@ -59,10 +59,12 @@
 
 (defn fnk-inputs
   "Return set of keys required to evaluate fnk in the flow."
-  [flow fnk]
-  (set/union (::required-keys (meta fnk))
-             (set/intersection (::optional-keys (meta fnk))
-                               (set (keys flow)))))
+  ([fnk]
+     (select-keys (meta fnk) [::required-keys ::optional-keys]))
+  ([fnk flow]
+     (set/union (::required-keys (meta fnk))
+                (set/intersection (::optional-keys (meta fnk))
+                                  (set (keys flow))))))
 
 (defn- destructure-set-keys
   [set-subflow]
@@ -108,7 +110,7 @@
   "Return map from flow keys to their dependencies.
    Required keys of each fnk specify flow graph relationships"
   [flow]
-  (map-vals (partial fnk-inputs flow) flow))
+  (map-vals #(fnk-inputs % flow) flow))
 
 (defn- gensym? [s]
   (or (.contains (name s) "map__")
