@@ -167,7 +167,7 @@
             (create-map input-map) order)))
 
 (defn eager-compile
-  "Renturn compiled flow function. The function takes map of input values
+  "Return compiled flow function. The function takes map of input values
    and returns the result of evaluating flow fnks in precalculated order.
    Graph ordering and testing graph for loops takes place only once."
   [flow]
@@ -188,11 +188,11 @@
 
 (defn- key-suborders
   [fg order paths inputs]
-  (let [overriden (set/intersection
+  (let [overridden (set/intersection
                    (set inputs)
                    (set/difference (graph/internal-keys fg)
                                    (graph/free-internal-keys fg)))
-        key-paths (map-vals (partial filter #(not-any? overriden %)) paths)
+        key-paths (map-vals (partial filter #(not-any? overridden %)) paths)
         key-deps  (graph/graph-transitive-deps fg key-paths)]
     {:orders (map-keys #(graph/filter-order order (key-deps %)) fg)
      :inputs (map-keys #(set/intersection (graph/external-keys fg) (key-deps %)) fg)}))
