@@ -64,7 +64,7 @@
                fg)))
 
 (defn- trim-path
-  "Return rest of the path at the first occurance of key"
+  "Return rest of the path at the first occurrence of key"
   ([path key] (trim-path path key 0))
   ([path key i]
      (if (= (path i) key)

@@ -59,7 +59,7 @@
              :e  (fnk {:keys [a] :strs [d]} (+ a d))})]
   
   (deftest fnk-inputs-test
-    ;; defalut values for fnk keys are ignored since flow contains same keys
+    ;; default values for fnk keys are ignored since flow contains same keys
     ;; keys :a and :b are required, though default values {a 0 b 0} were defined
     (is (= #{:a :b} (fnk-inputs (flow-1 'c) flow-1))))
   
@@ -132,7 +132,7 @@
     (is (lazy-map= {:x 1 :y 2 :z 3 :a -1 :b 5 'c -5 "d" -15 :e -16}
                    (lazy-flow {:x 1 :y 2 :z 3} :parallel true))))
   
-  ;; In a lazy style evaluaion only required keys are evaluated
+  ;; In a lazy style evaluation only required keys are evaluated
   (deftest lazy-flow-log-test
     (reset! flow-log #{})
     ;; evaluate single key
@@ -150,7 +150,7 @@
   
   ;; Input map keys can override outputs
   ;; When overridden key acts as a bridge in a flow graph
-  ;; keys in a separated sucomponent are ignored
+  ;; keys in a separated component are ignored
   (deftest lazy-flow-override-log-test
     (reset! flow-log #{})
     (is (= #{} @flow-log))
@@ -159,8 +159,8 @@
     ;; :b key is not required, since 'c is overridden
     (is (= #{:a "d" :e} @flow-log)))
   
-  ;; Call a compilled lazy flow function to produce lazy map
-  ;; None of its keys are evaluated at this timex
+  ;; Call a compiled lazy flow function to produce lazy map
+  ;; None of its keys are evaluated at this time
   (let [lazy-flow-map-1 (lazy-flow {:x 1 :y 2 :z 3})
         lazy-flow-map-2 (lazy-flow {:x 4 :y 5 :z 6})]
   
@@ -196,7 +196,7 @@
              ;; All keys in a set depend on the same fnk via gensymed key
              #{:b c "d"} (fnk [] 2)
              ;; Vector and map binding forms are destructured with clojure.core/destructure
-             ;; and produce symbol keywords depending on transietn gensymed keys created by destructure
+             ;; and produce symbol keywords depending on transient gensymed keys created by destructure
              [a1 [a2 a3 :as v1] & ar :as v0]
              (fnk {a :a :keys[b] :syms [c] :strs [d]}
                   [a [b c] d])
