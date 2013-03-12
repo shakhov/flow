@@ -227,8 +227,8 @@
                             (graph/external-keys fg))]
     (println "digraph {")
     (doseq [key all-keys]
-      (println (str (name key) ";")))
+      (println (str "\"" (name key) "\";")))
     (doseq [[key inputs] fg]
       (doseq [i inputs]
-        (println (str (name i) " -> " (name key)))))
+        (println (str "\"" (name i) "\" -> \"" (name key) "\""))))
     (println "}")))
