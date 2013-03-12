@@ -140,6 +140,11 @@
                       (.indexOf order k2))))
           m)))
 
+(defn- evaluate-key
+  [flow key input]
+  (when-let [key-fn (flow key)]
+    (key-fn input)))
+
 (defn- evaluate-order [flow order input-map & {:keys [parallel inputs]}]
   "Evaluate flow fnks in the given order using input map values.
    Return a map from keys to values. Output map includes all input keys."
@@ -150,11 +155,11 @@
   (let [create-map (if parallel
                      lazy-map/create-lazy-map
                      identity)
-        eval-key (if parallel
-                   (fn [key input-map]
-                     (let [f (future ((flow key) input-map))]
-                       (delay @f)))
-                   (fn [key input-map] ((flow key) input-map)))]
+        evaluate-key (if parallel
+                       (fn [flow key input-map]
+                         (let [f (future (evaluate-key flow key input-map))]
+                           (delay @f)))
+                       evaluate-key)]
     
     (reduce (fn [output-map stage-keys]
               (into output-map
@@ -162,7 +167,7 @@
                      (zipmap stage-keys
                              (map (fn [key]
                                     (or (input-map key)
-                                        (eval-key key output-map)))
+                                        (evaluate-key flow key output-map)))
                                   stage-keys)))))
             (create-map input-map) order)))
 
