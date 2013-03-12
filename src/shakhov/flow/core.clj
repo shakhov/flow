@@ -8,6 +8,21 @@
             [lazymap.core :as lazy-map]
             [clojure.set :as set]))
 
+(def ^:dynamic *default-fnk-key-type* :keys)
+(def ^:dynamic *default-flow-key-type* :keys)
+
+(defn set-default-fnk-key-type!
+  [key-type]
+  {:pre [(contains? #{:keys :syms :strs} key-type)]}
+  (alter-var-root (var *default-fnk-key-type*)
+                  (fn [_] key-type)))
+
+(defn set-default-flow-key-type!
+  [key-type]
+  {:pre [(contains? #{:keys :syms :strs} key-type)]}
+  (alter-var-root (var *default-flow-key-type*)
+                  (fn [_] key-type)))
+
 (defn- destructure-bindings
   [binding-map]
   (let [key-names (set (:keys binding-map))
@@ -47,7 +62,9 @@
   argument to destructure. Fnk asserts that all required keys are present
   and evaluates the body form. Set of required and optional keys is stored in fnk's metadata."
   [bindings & body]
-  (let [binding-map (if (vector? bindings) {:keys bindings} bindings)
+  (let [binding-map (if (vector? bindings)
+                      {*default-fnk-key-type* bindings}
+                      bindings)
         {:keys [required-keys optional-keys]} (destructure-bindings binding-map)]
     `(with-meta
        (fn [input-map#]
@@ -101,13 +118,13 @@
 
 (defmacro flow
   "Return new flow. Flow is a map from keys to fnks."
-  ([flow-map] `(flow :keys ~flow-map))
+  ([flow-map] `(flow ~*default-flow-key-type* ~flow-map))
   ([key-type flow-map]
      {:pre [(map? flow-map)]}
      (let [all-keys (keys flow-map)
            single-keys (filter (complement coll?) all-keys)
            set-keys    (filter set? all-keys)
-        destr-keys  (filter #(or (map? %) (vector? %)) all-keys)]
+           destr-keys  (filter #(or (map? %) (vector? %)) all-keys)]
        `(merge
          ~(into {} (map (fn [[key form]] `[(quote ~key) ~form])
                         (select-keys flow-map single-keys)))
