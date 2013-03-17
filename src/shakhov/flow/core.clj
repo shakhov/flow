@@ -11,6 +11,9 @@
 (def ^:dynamic *default-fnk-key-type* :keys)
 (def ^:dynamic *default-flow-key-type* :keys)
 
+(def ^:dynamic *logger* {:pre (fn [flow key input])
+                         :post (fn [flow key input output])})
+
 (defn set-default-fnk-key-type!
   [key-type]
   {:pre [(contains? #{:keys :syms :strs} key-type)]}
@@ -160,7 +163,12 @@
 (defn- evaluate-key
   [flow key input]
   (when-let [key-fn (flow key)]
-    (key-fn input)))
+    (when-let [pre (:pre *logger*)]
+      (pre flow key input))
+    (let [output (key-fn input)]
+      (when-let [post (:post *logger*)]
+        (post flow key input output))
+      output)))
 
 (defn- evaluate-order [flow order input-map & {:keys [parallel]}]
   "Evaluate flow fnks in the given order using input map values.
