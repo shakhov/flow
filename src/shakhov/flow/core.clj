@@ -64,8 +64,11 @@
   "Return fnk - a keyword function. The function takes single map
   argument to destructure. Fnk asserts that all required keys are present
   and evaluates the body form. Set of required and optional keys is stored in fnk's metadata."
-  [bindings & body]
-  (let [binding-map (if (vector? bindings)
+  [& fdecl]
+  (let [[doc bindings & body] (if (string? (first fdecl))
+                                fdecl
+                                `[nil ~@fdecl])
+        binding-map (if (vector? bindings)
                       {*default-fnk-key-type* bindings}
                       bindings)
         {:keys [required-keys optional-keys]} (destructure-bindings binding-map)]
@@ -74,7 +77,8 @@
          (assert-inputs input-map# '~required-keys)
          (let [~binding-map input-map#]
            ~@body))
-       {::required-keys '~required-keys
+       {::doc ~doc
+        ::required-keys '~required-keys
         ::optional-keys '~optional-keys})))
 
 (defn fnk-inputs
