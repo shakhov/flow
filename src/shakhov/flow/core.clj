@@ -144,7 +144,7 @@
   [flow]
   (map-vals #(fnk-inputs % flow) flow))
 
-(defn- gensym? [s]
+(defn gensymed? [s]
   (or (.contains (name s) "map__")
       (.contains (name s) "vec__")
       (.contains (name s) "key__")))
@@ -152,7 +152,7 @@
 (defn filter-gensyms
   "Return map with all 'gensym' keys removed."
   [m]
-  (select-keys m (remove gensym? (keys m))))
+  (select-keys m (remove gensymed? (keys m))))
 
 (defn sorted-map-by-order
   "Return map sorted by given order."
