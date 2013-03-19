@@ -109,18 +109,22 @@
 (defn- destructure-destr-keys
   [key-type map-subflow]
   (mapcat (fn [[ds form]]
-            (let [[k1 f1 & destr] (destructure [ds form])
-                  destr (dissoc (apply hash-map destr) k1)
-                  destr-keys (into #{k1} (keys destr))
-                  deps  (map-vals (fn [form] 
-                                    (let [deps (if (coll? form)
-                                                 (set/intersection destr-keys (set form))
-                                                 [form])]
-                                      (if (empty? deps) [] {key-type (vec deps)})))
+            (let [[[k1 f1] & _ :as destr] (partition 2 (destructure [ds form]))
+                  destr (apply merge-with vector
+                               (map (partial apply hash-map) destr))
+                  deps  (map-vals (fn [form]
+                                    (let [form (if (coll? form) form [form])]
+                                      (set/intersection (set (keys destr))
+                                                        (set (flatten form)))))
                                   destr)]
               (cons `[~(make-flow-key key-type k1) ~f1]
-                    (map (fn [[k f]] `[~(make-flow-key key-type k) (fnk ~(deps k) ~f)])
-                         destr))))
+                    (map (fn [[k f]]
+                           `[~(make-flow-key key-type k)
+                             (fnk ~{key-type (vec (set/difference (deps k) #{k}))}
+                                  ~(if (vector? f)
+                                     `(let [~@(interleave (repeat k) f)] ~k)
+                                     f))])
+                         (dissoc destr k1)))))
           map-subflow))
 
 (defmacro flow

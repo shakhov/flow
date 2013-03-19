@@ -211,6 +211,14 @@
     (is (lazy-map= {:a 1 :b 2 'c 2 "d" 2 :a1 1 ':a2 2 :a3 2 :v1 [2 2] :ar [2] :v0 [1 [2 2] 2] :k 1 :l 2 :m 3 :n 4}
                    (lazy-flow-destructure {})))))
 
+;; Nested destructuring
+(let [flow-destructure
+      (flow {[a [b1 b2] & {:keys [c d] [e & f] :ef}]
+             (fnk [] [1 [2 3] :c 4 :d 5 :ef [6 7 8 9]])})]
+  (deftest flow-nested-destructuring
+    (is (= {:a 1 :b1 2 :b2 3 :c 4 :d 5 :e 6 :f [7 8 9]}
+           ((eager-compile flow-destructure) {})))))
+
 ;; Flow macro takes optional argument specifying destructured keys type
 (let [flow-destr-keys (flow :keys {{:keys [a b]} (fnk [] {:a 1 :b 2})})
       flow-destr-syms (flow :syms {{:keys [a b]} (fnk [] {:a 1 :b 2})})
