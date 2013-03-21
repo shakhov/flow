@@ -49,8 +49,11 @@
 (defn assert-inputs
   [input-map required-keys]
   (when-not (every? input-map required-keys)
-    (throw (new Exception (str "Missing input keys: "
-                               (set/difference required-keys (set (keys input-map))))))))
+    (let [missing (set/difference required-keys
+                                  (->> input-map
+                                       (filter second)
+                                       (map first)))]
+      (throw (new Exception (str "Missing input keys: " missing))))))
 
 (defn safe-order [fg & {paths :paths}]
   (let [{:keys [order remains]} (graph/graph-order fg)
