@@ -224,10 +224,11 @@
                     (create-map
                      (zipmap stage-keys
                              (map (fn [key]
-                                    (or (input-map key)
-                                        (evaluate-key flow key output-map)))
+                                    (if (find input-map key)
+                                      (input-map key)
+                                      (evaluate-key flow key output-map)))
                                   stage-keys)))))
-            (create-map input-map) order)))
+            (create-map input-map) (next order))))
 
 (defn eager-compile
   "Return compiled flow function. The function takes map of input values
