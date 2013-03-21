@@ -68,18 +68,44 @@
   argument to destructure. Fnk asserts that all required keys are present
   and evaluates the body form. Set of required and optional keys is stored in fnk's metadata."
   [& fdecl]
-  (let [[doc bindings & body] (if (string? (first fdecl))
-                                fdecl
-                                `[nil ~@fdecl])
+  (let [doc (when (string? (first fdecl))
+              (first fdecl))
+        fdecl (if doc
+                (next fdecl)
+                fdecl)
+        bindings (first fdecl)
+        fdecl (next fdecl)
         binding-map (if (vector? bindings)
                       {*default-fnk-key-type* bindings}
                       bindings)
-        {:keys [required-keys optional-keys]} (destructure-bindings binding-map)]
+        {:keys [required-keys optional-keys]} (destructure-bindings binding-map)
+        as (or (:as binding-map) (gensym "as__"))
+        binding-map (if (:as binding-map)
+                      binding-map
+                      (merge binding-map `{:as ~as}))
+        conds (when (and (next fdecl)
+                         (map? (first fdecl)))
+                (first fdecl))
+        body (if conds
+               (next fdecl)
+               fdecl)
+        pre (:pre conds)
+        post (:post conds)
+        body (if post
+               `((let [~'% ~(if (< 1 (count body))
+                              `(do ~@body)
+                              (first body))]
+                   ~@(map (fn* [c] `(assert ~c)) post)
+                   ~'%))
+               body)
+        body (if pre
+               (concat (map (fn* [c] `(assert ~c)) pre)
+                       body)
+               body)]
     `(with-meta
-       (fn [input-map#]
-         (assert-inputs input-map# '~required-keys)
-         (let [~binding-map input-map#]
-           ~@body))
+       (fn [~binding-map]
+         (assert-inputs ~as '~required-keys)
+         ~@body)
        {::doc ~doc
         ::required-keys '~required-keys
         ::optional-keys '~optional-keys})))
