@@ -181,10 +181,10 @@
         (post flow key input output))
       output)))
 
-(defn- evaluate-order [flow order input-map & {:keys [parallel]}]
+(defn- evaluate-order
   "Evaluate flow fnks in the given order using input map values.
    Return a map from keys to values. Output map includes all input keys."
-
+  [flow order input-map & {:keys [parallel]}]
   (let [create-map (if parallel
                      lazy-map/create-lazy-map
                      identity)
