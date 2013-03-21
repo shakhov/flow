@@ -175,6 +175,14 @@
   [flow]
   (map-vals #(fnk-inputs % flow) flow))
 
+(defn subflow
+  "Return minimal subflow containing all keys required to evaluate specified keys"
+  [flow output-keys]
+  (let [fg (flow-graph flow)
+        deps (map (partial graph/key-transitive-deps fg)
+                  output-keys)]
+    (select-keys flow (apply concat deps))))
+
 (defn gensymed? [s]
   (or (.contains (name s) "map__")
       (.contains (name s) "vec__")
