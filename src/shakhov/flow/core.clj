@@ -48,11 +48,9 @@
 
 (defn assert-inputs
   [input-map required-keys]
-  (when-not (every? input-map required-keys)
+  (when-not (every? #(find input-map %) required-keys)
     (let [missing (set/difference required-keys
-                                  (->> input-map
-                                       (filter second)
-                                       (map first)))]
+                                  (set (keys input-map)))]
       (throw (new Exception (str "Missing input keys: " missing))))))
 
 (defn safe-order [fg & {paths :paths}]
@@ -133,7 +131,7 @@
     :keys (keyword (name key))
     :syms `(quote ~key)
     :strs (name key)
-    (throw (Exception. (str "Unknown key type: " type)))))
+    (throw (new Exception (str "Unknown key type: " type)))))
 
 (defn- destructure-destr-keys
   [key-type map-subflow]
@@ -199,13 +197,14 @@
 
 (defn- evaluate-key
   [flow key input]
-  (when-let [key-fn (flow key)]
-    (when-let [pre (:pre *logger*)]
-      (pre flow key input))
-    (let [output (key-fn input)]
-      (when-let [post (:post *logger*)]
-        (post flow key input output))
-      output)))
+  (if-let [key-fn (flow key)]
+    (do (when-let [pre (:pre *logger*)]
+          (pre flow key input))
+        (let [output (key-fn input)]
+          (when-let [post (:post *logger*)]
+            (post flow key input output))
+          output))
+    (throw (new Exception (str "Undefined flow key: " (pr-str key))))))
 
 (defn- evaluate-order
   "Evaluate flow fnks in the given order using input map values.
