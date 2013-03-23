@@ -81,9 +81,9 @@
     (deftest eager-flow-parallel-eval-test
       ;; Given an input map eager function returns map of all inputs and outputs
       (is (lazy-map= {:x 1 :y 2 :z 3 :a -1 :b 5 'c -5 "d" -15 :e -16}
-                   (eager-flow {:x 1 :y 2 :z 3} :parallel true)))
+                   (eager-flow {:x 1 :y 2 :z 3} :parallel)))
       (is (lazy-map= {:x 4 :y 5 :z 6 :a -4 :b 11 'c -11/4 "d" -33/2 :e -41/2}
-                     (eager-flow {:x 4 :y 5 :z 6} :parallel true))))
+                     (eager-flow {:x 4 :y 5 :z 6} :parallel))))
   
     (deftest eager-flow-override-test
       ;; Some keys can be overridden by input map keys.
@@ -130,7 +130,7 @@
   ;; With parallel evaluation option
   (deftest lazy-flow-keys-parallel-test
     (is (lazy-map= {:x 1 :y 2 :z 3 :a -1 :b 5 'c -5 "d" -15 :e -16}
-                   (lazy-flow {:x 1 :y 2 :z 3} :parallel true))))
+                   (lazy-flow {:x 1 :y 2 :z 3} :parallel))))
   
   ;; In a lazy style evaluation only required keys are evaluated
   (deftest lazy-flow-log-test

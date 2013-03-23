@@ -217,11 +217,12 @@
 (defn- evaluate-order
   "Evaluate flow fnks in the given order using input map values.
    Return a map from keys to values. Output map includes all input keys."
-  [flow order input-map & {:keys [parallel]}]
-  (let [create-map (if parallel
+  [flow order input-map & options]
+  (let [options (set options)
+        create-map (if (:parallel options)
                      lazy-map/create-lazy-map
                      identity)
-        evaluate-key (if parallel
+        evaluate-key (if (:parallel options)
                        (fn [flow key input-map]
                          (let [f (future (evaluate-key flow key input-map))]
                            (delay @f)))
@@ -246,8 +247,8 @@
   (let [fg (flow-graph flow)
         order  (safe-order fg)
         inputs (graph/external-keys fg)]
-    (fn [input-map & {:keys [parallel]}]
-      (filter-gensyms (evaluate-order flow order input-map  :parallel parallel)))))
+    (fn [input-map & options]
+      (filter-gensyms (apply evaluate-order flow order input-map options)))))
 
 (defn- fnk-memoize [memo k f]
   (with-meta 
@@ -278,13 +279,12 @@
         flow-paths (graph/graph-paths fg)
         order (safe-order fg :paths flow-paths)]
     ; Function to return
-    (fn [input-map & {:keys [parallel]}]
+    (fn [input-map & options]
       (let [output-map (atom input-map)
             flow-memo  (map-map (partial fnk-memoize output-map) flow)
             suborders  (key-suborders fg order flow-paths (keys input-map))
-            eval-suborder (fn [k] (evaluate-order
-                                   flow-memo ((:orders suborders) k) @output-map
-                                   :parallel parallel))
+            eval-suborder (fn [k] (apply evaluate-order flow-memo
+                                         ((:orders suborders) k) @output-map options))
             delayed-flow (map-keys (fn [k] (delay (get @output-map k (get (eval-suborder k) k))))
                                    flow)]
         (lazy-map/create-lazy-map
