@@ -253,3 +253,21 @@
     (is (= {:x 15.0 :y 73.0 :a 16.0 :b 72.0 :d1 87.0 :d2 57.0 :l 57.0 :sum 144.0}
            ((eager-compile flow-with-lets) {:x 15.0 :y 73.0})))))
 
+(let [feasible-flow (flow {:a (fnk [x] x)
+                           :b (fnk [y] y)
+                           :c (fnk [z b] (+ b z))
+                           :d (fnk [c] (inc c))})
+      lazy-feasible-flow (lazy-compile feasible-flow)]
+  (deftest feasible-keys-test
+    (is (lazy-map= {:x 1 :y 2 :z 3 :a 1 :b 2 :c 5 :d 6}
+                   (lazy-feasible-flow {:x 1 :y 2 :z 3})))
+    (is (lazy-map= {:x 1 :a 1}
+                   (lazy-feasible-flow {:x 1} :feasible)))
+    (is (lazy-map= {:x 1 :y 2 :a 1 :b 2}
+                   (lazy-feasible-flow {:x 1 :y 2} :feasible)))
+    (is (lazy-map= {:y 2 :z 3  :b 2 :c 5 :d 6}
+                   (lazy-feasible-flow {:y 2 :z 3} :feasible)))
+    (is (lazy-map= {:z 3  :b 10 :c 13 :d 14}
+                   (lazy-feasible-flow {:z 3 :b 10} :feasible)))
+    (is (lazy-map= {:c 5 :d 6}
+                   (lazy-feasible-flow {:c 5} :feasible)))))

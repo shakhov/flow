@@ -280,13 +280,18 @@
         order (safe-order fg :paths flow-paths)]
     ; Function to return
     (fn [input-map & options]
-      (let [output-map (atom input-map)
+      (let [options (set options)
+            output-map (atom input-map)
             flow-memo  (map-map (partial fnk-memoize output-map) flow)
             suborders  (key-suborders fg order flow-paths (keys input-map))
             eval-suborder (fn [k] (apply evaluate-order flow-memo
                                          ((:orders suborders) k) @output-map options))
             delayed-flow (map-keys (fn [k] (delay (get @output-map k (get (eval-suborder k) k))))
-                                   flow)]
+                                   (if (:feasible options)
+                                     (select-keys flow (filter #(every? (partial find input-map)
+                                                                        ((:inputs suborders) %))
+                                                               (keys flow)))
+                                     flow))]
         (lazy-map/create-lazy-map
          (merge (filter-gensyms delayed-flow)
                 input-map))))))
