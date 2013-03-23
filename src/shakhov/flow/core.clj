@@ -287,7 +287,7 @@
             output-map (atom input-map)
             flow-memo  (map-map (partial fnk-memoize output-map) flow)
             suborders  (key-suborders fg order flow-paths (keys input-map))
-            eval-suborder (fn [k] (apply evaluate-order flow-memo
+            eval-suborder (bound-fn [k] (apply evaluate-order flow-memo
                                          ((:orders suborders) k) @output-map options))
             delayed-flow (map-keys (fn [k] (delay (get @output-map k (get (eval-suborder k) k))))
                                    (if (:feasible options)
