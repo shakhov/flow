@@ -245,10 +245,13 @@
    Graph ordering and testing graph for loops takes place only once."
   [flow]
   (let [fg (flow-graph flow)
-        order  (safe-order fg)
-        inputs (graph/external-keys fg)]
+        order  (safe-order fg)]
     (fn [input-map & options]
-      (filter-gensyms (apply evaluate-order flow order input-map options)))))
+      (let [options (set options)
+            output (filter-gensyms (apply evaluate-order flow order input-map options))]
+        (if (:no-inputs options)
+          (apply dissoc output (keys input-map))
+          output)))))
 
 (defn- fnk-memoize [memo k f]
   (with-meta 
@@ -294,7 +297,8 @@
                                      flow))]
         (lazy-map/create-lazy-map
          (merge (filter-gensyms delayed-flow)
-                input-map))))))
+                (when-not (:no-inputs options)
+                  input-map)))))))
 
 (defn flow->dot
   "Print representation of flow in 'dot' format to standard output."
