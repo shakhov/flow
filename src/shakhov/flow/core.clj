@@ -48,7 +48,7 @@
 
 (defn assert-inputs
   [input-map required-keys]
-  (when-not (every? #(find input-map %) required-keys)
+  (when-not (every? #(contains? input-map %) required-keys)
     (let [missing (set/difference required-keys
                                   (set (keys input-map)))]
       (throw (new Exception (str "Missing input keys: " missing))))))
@@ -233,7 +233,7 @@
                     (create-map
                      (zipmap stage-keys
                              (map (fn [key]
-                                    (if (find input-map key)
+                                    (if (contains? input-map key)
                                       (input-map key)
                                       (evaluate-key flow key output-map)))
                                   stage-keys)))))
@@ -291,7 +291,7 @@
                                          ((:orders suborders) k) @output-map options))
             delayed-flow (map-keys (fn [k] (delay (get @output-map k (get (eval-suborder k) k))))
                                    (if (:feasible options)
-                                     (select-keys flow (filter #(every? (partial find input-map)
+                                     (select-keys flow (filter #(every? (partial contains? input-map)
                                                                         ((:inputs suborders) %))
                                                                (keys flow)))
                                      flow))]
