@@ -271,3 +271,47 @@
                    (lazy-feasible-flow {:z 3 :b 10} :feasible)))
     (is (lazy-map= {:c 5 :d 6}
                    (lazy-feasible-flow {:c 5} :feasible)))))
+
+(defmacro eval-time [& body]
+  `(let [start# (. java.lang.System nanoTime)
+         res#   (do ~@body)
+         end#   (. java.lang.System nanoTime)
+         msec# (/ (- end# start#) 1000000.0)]
+     {:res res#
+      :msec msec#}))
+
+(let [sleeping-flow (flow {:x (fnk []  (Thread/sleep 100) 1)
+                           :y (fnk [x] (Thread/sleep 100) (inc x))
+                           :z (fnk [y] (Thread/sleep 100) (inc y))
+                           :a (fnk []  (Thread/sleep 150) 1)
+                           :b (fnk [a] (Thread/sleep 150) (inc a))
+                           :v (fnk [z b] (Thread/sleep 50) (+ b z))})
+      eager-flow (eager-compile sleeping-flow)
+      lazy-flow  (lazy-compile  sleeping-flow)]
+  
+  (deftest parallel-timing-test
+    ;; Eager sequental vs parallel evaluation time
+    (let [{:keys [msec res]} (eval-time (eager-flow {}))]
+      (is (< 640 msec 660))
+      (is (= res {:x 1 :y 2 :z 3 :a 1 :b 2 :v 5})))
+    (let [{:keys [msec res]} (eval-time (eager-flow {} :parallel))]
+      (is (< 340 msec 360))
+      (is (= res {:x 1 :y 2 :z 3 :a 1 :b 2 :v 5})))
+    ;; Lazy sequental vs parallel evaluation time
+    (let [{:keys [msec res]} (eval-time (:v (lazy-flow {})))]
+      (is (< 640 msec 660))
+      (is (= res 5)))
+    (let [{:keys [msec res]} (eval-time (:v (lazy-flow {} :parallel)))]
+      (is (< 340 msec 360))
+      (is (= res 5)))
+    ;; Taking keys from the same lazy result
+    (let [f1 (lazy-flow {} :parallel)
+          {tz :msec z :res} (eval-time (:z f1))
+          {tb :msec b :res} (eval-time (:b f1))
+          {tv :msec v :res} (eval-time (:v f1))]
+      (is (< 290 tz 310)
+          (= z 3))
+      (is (< 290 tb 310)
+          (= b 2))
+      (is (< 45 tv 55)
+          (= v 5)))))
