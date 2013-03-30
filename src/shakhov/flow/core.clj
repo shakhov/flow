@@ -296,7 +296,7 @@
                                                                (keys flow)))
                                      flow))]
         (lazy-map/create-lazy-map
-         (merge (filter-gensyms delayed-flow)
+         (merge (filter-gensyms (apply dissoc delayed-flow (keys input-map)))
                 (when-not (:no-inputs options)
                   input-map)))))))
 
