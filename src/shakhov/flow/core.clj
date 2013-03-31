@@ -8,6 +8,24 @@
             [lazymap.core :as lazy-map]
             [clojure.set :as set]))
 
+(def ^:dynamic *default-fnk-key-type* :keys)
+(def ^:dynamic *default-flow-key-type* :keys)
+
+(def ^:dynamic *logger* {:pre (fn [flow key input])
+                         :post (fn [flow key input output])})
+
+(defn set-default-fnk-key-type!
+  [key-type]
+  {:pre [(contains? #{:keys :syms :strs} key-type)]}
+  (alter-var-root (var *default-fnk-key-type*)
+                  (fn [_] key-type)))
+
+(defn set-default-flow-key-type!
+  [key-type]
+  {:pre [(contains? #{:keys :syms :strs} key-type)]}
+  (alter-var-root (var *default-flow-key-type*)
+                  (fn [_] key-type)))
+
 (defn- destructure-bindings
   [binding-map]
   (let [key-names (set (:keys binding-map))
@@ -30,9 +48,10 @@
 
 (defn assert-inputs
   [input-map required-keys]
-  (when-not (every? input-map required-keys)
-    (throw (new Exception (str "Missing input keys: "
-                               (set/difference required-keys (set (keys input-map))))))))
+  (when-not (every? #(contains? input-map %) required-keys)
+    (let [missing (set/difference required-keys
+                                  (set (keys input-map)))]
+      (throw (new Exception (str "Missing input keys: " missing))))))
 
 (defn safe-order [fg & {paths :paths}]
   (let [{:keys [order remains]} (graph/graph-order fg)
@@ -46,15 +65,47 @@
   "Return fnk - a keyword function. The function takes single map
   argument to destructure. Fnk asserts that all required keys are present
   and evaluates the body form. Set of required and optional keys is stored in fnk's metadata."
-  [bindings & body]
-  (let [binding-map (if (vector? bindings) {:keys bindings} bindings)
-        {:keys [required-keys optional-keys]} (destructure-bindings binding-map)]
+  [& fdecl]
+  (let [doc (when (string? (first fdecl))
+              (first fdecl))
+        fdecl (if doc
+                (next fdecl)
+                fdecl)
+        bindings (first fdecl)
+        fdecl (next fdecl)
+        binding-map (if (vector? bindings)
+                      {*default-fnk-key-type* bindings}
+                      bindings)
+        {:keys [required-keys optional-keys]} (destructure-bindings binding-map)
+        as (or (:as binding-map) (gensym "as__"))
+        binding-map (if (:as binding-map)
+                      binding-map
+                      (merge binding-map `{:as ~as}))
+        conds (when (and (next fdecl)
+                         (map? (first fdecl)))
+                (first fdecl))
+        body (if conds
+               (next fdecl)
+               fdecl)
+        pre (:pre conds)
+        post (:post conds)
+        body (if post
+               `((let [~'% ~(if (< 1 (count body))
+                              `(do ~@body)
+                              (first body))]
+                   ~@(map (fn* [c] `(assert ~c)) post)
+                   ~'%))
+               body)
+        body (if pre
+               (concat (map (fn* [c] `(assert ~c)) pre)
+                       body)
+               body)]
     `(with-meta
-       (fn [input-map#]
-         (assert-inputs input-map# '~required-keys)
-         (let [~binding-map input-map#]
-           ~@body))
-       {::required-keys '~required-keys
+       (fn [~binding-map]
+         (assert-inputs ~as '~required-keys)
+         ~@body)
+       {::doc ~doc
+        ::required-keys '~required-keys
         ::optional-keys '~optional-keys})))
 
 (defn fnk-inputs
@@ -80,34 +131,38 @@
     :keys (keyword (name key))
     :syms `(quote ~key)
     :strs (name key)
-    (throw (Exception. (str "Unknown key type: " type)))))
+    (throw (new Exception (str "Unknown key type: " type)))))
 
 (defn- destructure-destr-keys
   [key-type map-subflow]
   (mapcat (fn [[ds form]]
-            (let [[k1 f1 & destr] (destructure [ds form])
-                  destr (dissoc (apply hash-map destr) k1)
-                  destr-keys (into #{k1} (keys destr))
-                  deps  (map-vals (fn [form] 
-                                    (let [deps (if (coll? form)
-                                                 (set/intersection destr-keys (set form))
-                                                 [form])]
-                                      (if (empty? deps) [] {key-type (vec deps)})))
+            (let [[[k1 f1] & _ :as destr] (partition 2 (destructure [ds form]))
+                  destr (apply merge-with vector
+                               (map (partial apply hash-map) destr))
+                  deps  (map-vals (fn [form]
+                                    (let [form (if (coll? form) form [form])]
+                                      (set/intersection (set (keys destr))
+                                                        (set (flatten form)))))
                                   destr)]
               (cons `[~(make-flow-key key-type k1) ~f1]
-                    (map (fn [[k f]] `[~(make-flow-key key-type k) (fnk ~(deps k) ~f)])
-                         destr))))
+                    (map (fn [[k f]]
+                           `[~(make-flow-key key-type k)
+                             (fnk ~{key-type (vec (set/difference (deps k) #{k}))}
+                                  ~(if (vector? f)
+                                     `(let [~@(interleave (repeat k) f)] ~k)
+                                     f))])
+                         (dissoc destr k1)))))
           map-subflow))
 
 (defmacro flow
   "Return new flow. Flow is a map from keys to fnks."
-  ([flow-map] `(flow :keys ~flow-map))
+  ([flow-map] `(flow ~*default-flow-key-type* ~flow-map))
   ([key-type flow-map]
      {:pre [(map? flow-map)]}
      (let [all-keys (keys flow-map)
            single-keys (filter (complement coll?) all-keys)
            set-keys    (filter set? all-keys)
-        destr-keys  (filter #(or (map? %) (vector? %)) all-keys)]
+           destr-keys  (filter #(or (map? %) (vector? %)) all-keys)]
        `(merge
          ~(into {} (map (fn [[key form]] `[(quote ~key) ~form])
                         (select-keys flow-map single-keys)))
@@ -120,7 +175,15 @@
   [flow]
   (map-vals #(fnk-inputs % flow) flow))
 
-(defn- gensym? [s]
+(defn subflow
+  "Return minimal subflow containing all keys required to evaluate specified keys"
+  [flow output-keys]
+  (let [fg (flow-graph flow)
+        deps (map (partial graph/key-transitive-deps fg)
+                  output-keys)]
+    (select-keys flow (apply concat deps))))
+
+(defn gensymed? [s]
   (or (.contains (name s) "map__")
       (.contains (name s) "vec__")
       (.contains (name s) "key__")))
@@ -128,7 +191,7 @@
 (defn filter-gensyms
   "Return map with all 'gensym' keys removed."
   [m]
-  (select-keys m (remove gensym? (keys m))))
+  (select-keys m (remove gensymed? (keys m))))
 
 (defn sorted-map-by-order
   "Return map sorted by given order."
@@ -140,31 +203,41 @@
                       (.indexOf order k2))))
           m)))
 
-(defn- evaluate-order [flow order input-map & {:keys [parallel inputs]}]
+(defn- evaluate-key
+  [flow key input]
+  (if-let [key-fn (flow key)]
+    (do (when-let [pre (:pre *logger*)]
+          (pre flow key input))
+        (let [output (key-fn input)]
+          (when-let [post (:post *logger*)]
+            (post flow key input output))
+          output))
+    (throw (new Exception (str "Undefined flow key: " (pr-str key))))))
+
+(defn- evaluate-order
   "Evaluate flow fnks in the given order using input map values.
    Return a map from keys to values. Output map includes all input keys."
-
-  (let [inputs (or inputs (graph/external-keys (flow-graph flow)))]
-    (assert-inputs input-map inputs))
-  
-  (let [create-map (if parallel
+  [flow order input-map & options]
+  (let [options (set options)
+        create-map (if (:parallel options)
                      lazy-map/create-lazy-map
                      identity)
-        eval-key (if parallel
-                   (fn [key input-map]
-                     (let [f (future ((flow key) input-map))]
-                       (delay @f)))
-                   (fn [key input-map] ((flow key) input-map)))]
+        evaluate-key (if (:parallel options)
+                       (fn [flow key input-map]
+                         (let [f (future (evaluate-key flow key input-map))]
+                           (delay @f)))
+                       evaluate-key)]
     
     (reduce (fn [output-map stage-keys]
               (into output-map
                     (create-map
                      (zipmap stage-keys
                              (map (fn [key]
-                                    (or (input-map key)
-                                        (eval-key key output-map)))
+                                    (if (contains? input-map key)
+                                      (input-map key)
+                                      (evaluate-key flow key output-map)))
                                   stage-keys)))))
-            (create-map input-map) order)))
+            (create-map input-map) (next order))))
 
 (defn eager-compile
   "Return compiled flow function. The function takes map of input values
@@ -172,10 +245,13 @@
    Graph ordering and testing graph for loops takes place only once."
   [flow]
   (let [fg (flow-graph flow)
-        order  (safe-order fg)
-        inputs (graph/external-keys fg)]
-    (fn [input-map & {:keys [parallel]}]
-      (filter-gensyms (evaluate-order flow order input-map :inputs inputs :parallel parallel)))))
+        order  (safe-order fg)]
+    (fn [input-map & options]
+      (let [options (set options)
+            output (filter-gensyms (apply evaluate-order flow order input-map options))]
+        (if (:no-inputs options)
+          (apply dissoc output (keys input-map))
+          output)))))
 
 (defn- fnk-memoize [memo k f]
   (with-meta 
@@ -206,18 +282,23 @@
         flow-paths (graph/graph-paths fg)
         order (safe-order fg :paths flow-paths)]
     ; Function to return
-    (fn [input-map & {:keys [parallel]}]
-      (let [output-map (atom input-map)
+    (fn [input-map & options]
+      (let [options (set options)
+            output-map (atom input-map)
             flow-memo  (map-map (partial fnk-memoize output-map) flow)
             suborders  (key-suborders fg order flow-paths (keys input-map))
-            eval-suborder (fn [k] (evaluate-order
-                                   flow-memo ((:orders suborders) k) @output-map
-                                   :inputs ((:inputs suborders) k) :parallel parallel))
+            eval-suborder (bound-fn [k] (apply evaluate-order flow-memo
+                                         ((:orders suborders) k) @output-map options))
             delayed-flow (map-keys (fn [k] (delay (get @output-map k (get (eval-suborder k) k))))
-                                   flow)]
+                                   (if (:feasible options)
+                                     (select-keys flow (filter #(every? (partial contains? input-map)
+                                                                        ((:inputs suborders) %))
+                                                               (keys flow)))
+                                     flow))]
         (lazy-map/create-lazy-map
-         (merge (filter-gensyms delayed-flow)
-                input-map))))))
+         (merge (filter-gensyms (apply dissoc delayed-flow (keys input-map)))
+                (when-not (:no-inputs options)
+                  input-map)))))))
 
 (defn flow->dot
   "Print representation of flow in 'dot' format to standard output."
@@ -227,8 +308,8 @@
                             (graph/external-keys fg))]
     (println "digraph {")
     (doseq [key all-keys]
-      (println (str (name key) ";")))
+      (println (str (pr-str (name key)) ";")))
     (doseq [[key inputs] fg]
       (doseq [i inputs]
-        (println (str (name i) " -> " (name key)))))
+        (println (str (pr-str (name i)) " -> " (pr-str (name key)) ";"))))
     (println "}")))

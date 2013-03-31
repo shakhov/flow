@@ -99,7 +99,7 @@
   "Return topological ordering of the graph as a vector of sets of keys with same degree.
    Ordering includes all free (internal and external) keys."
   [fg]
-  (let [root-keys (free-keys fg)
+  (let [root-keys (external-keys fg)
         ;; keys with all parents eliminated can be eliminated too
         ready? (fn [order [k req]] (every? (reduce into order) req))]
     (loop [order [root-keys]
@@ -112,7 +112,7 @@
           (if (empty? eliminate)
             ;; nothing can be eliminated - return order and remains
             ;; remaining subgraph probably contains loops
-            {:order order
+            {:order (rest order)
              :remains (keys remains)}
             ;; eliminate and continue
             (recur (conj order (set eliminate))

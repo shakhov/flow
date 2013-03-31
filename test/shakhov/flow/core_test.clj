@@ -81,9 +81,9 @@
     (deftest eager-flow-parallel-eval-test
       ;; Given an input map eager function returns map of all inputs and outputs
       (is (lazy-map= {:x 1 :y 2 :z 3 :a -1 :b 5 'c -5 "d" -15 :e -16}
-                   (eager-flow {:x 1 :y 2 :z 3} :parallel true)))
+                   (eager-flow {:x 1 :y 2 :z 3} :parallel)))
       (is (lazy-map= {:x 4 :y 5 :z 6 :a -4 :b 11 'c -11/4 "d" -33/2 :e -41/2}
-                     (eager-flow {:x 4 :y 5 :z 6} :parallel true))))
+                     (eager-flow {:x 4 :y 5 :z 6} :parallel))))
   
     (deftest eager-flow-override-test
       ;; Some keys can be overridden by input map keys.
@@ -130,7 +130,7 @@
   ;; With parallel evaluation option
   (deftest lazy-flow-keys-parallel-test
     (is (lazy-map= {:x 1 :y 2 :z 3 :a -1 :b 5 'c -5 "d" -15 :e -16}
-                   (lazy-flow {:x 1 :y 2 :z 3} :parallel true))))
+                   (lazy-flow {:x 1 :y 2 :z 3} :parallel))))
   
   ;; In a lazy style evaluation only required keys are evaluated
   (deftest lazy-flow-log-test
@@ -211,6 +211,14 @@
     (is (lazy-map= {:a 1 :b 2 'c 2 "d" 2 :a1 1 ':a2 2 :a3 2 :v1 [2 2] :ar [2] :v0 [1 [2 2] 2] :k 1 :l 2 :m 3 :n 4}
                    (lazy-flow-destructure {})))))
 
+;; Nested destructuring
+(let [flow-destructure
+      (flow {[a [b1 b2] & {:keys [c d] [e & f] :ef}]
+             (fnk [] [1 [2 3] :c 4 :d 5 :ef [6 7 8 9]])})]
+  (deftest flow-nested-destructuring
+    (is (= {:a 1 :b1 2 :b2 3 :c 4 :d 5 :e 6 :f [7 8 9]}
+           ((eager-compile flow-destructure) {})))))
+
 ;; Flow macro takes optional argument specifying destructured keys type
 (let [flow-destr-keys (flow :keys {{:keys [a b]} (fnk [] {:a 1 :b 2})})
       flow-destr-syms (flow :syms {{:keys [a b]} (fnk [] {:a 1 :b 2})})
@@ -245,3 +253,98 @@
     (is (= {:x 15.0 :y 73.0 :a 16.0 :b 72.0 :d1 87.0 :d2 57.0 :l 57.0 :sum 144.0}
            ((eager-compile flow-with-lets) {:x 15.0 :y 73.0})))))
 
+;; No-inputs option - output map doesn't contain inputs
+(let [flow-1 (flow {:a (fnk [x] x)
+                    :b (fnk [y a] (+ a y))
+                    :c (fnk [z b] (+ b z))
+                    :d (fnk [a b c] (- a b c))})]
+  (deftest no-inputs-test
+    (is (= {:x 1 :y 2 :z 3 :a 1 :b 3 :c 6 :d -8}
+           ((eager-compile flow-1) {:x 1 :y 2 :z 3})))
+    (is (= {:a 1 :b 3 :c 6 :d -8}
+           ((eager-compile flow-1) {:x 1 :y 2 :z 3} :no-inputs)))
+    (is (lazy-map= {:x 1 :y 2 :z 3 :a 1 :b 3 :c 6 :d -8}
+                   ((lazy-compile flow-1) {:x 1 :y 2 :z 3})))
+    (is (lazy-map= {:a 1 :b 3 :c 6 :d -8}
+                   ((lazy-compile flow-1) {:x 1 :y 2 :z 3} :no-inputs)))))
+
+;; Feasible option - lazy flow output contains only the keys that can be evaluated using provided inputs.
+(let [feasible-flow (flow {:a (fnk [x] x)
+                           :b (fnk [y] y)
+                           :c (fnk [z b] (+ b z))
+                           :d (fnk [c] (inc c))})
+      lazy-feasible-flow (lazy-compile feasible-flow)]
+  (deftest feasible-keys-test
+    (is (lazy-map= {:x 1 :y 2 :z 3 :a 1 :b 2 :c 5 :d 6}
+                   (lazy-feasible-flow {:x 1 :y 2 :z 3})))
+    (is (lazy-map= {:x 1 :a 1}
+                   (lazy-feasible-flow {:x 1} :feasible)))
+    (is (lazy-map= {:x 1 :y 2 :a 1 :b 2}
+                   (lazy-feasible-flow {:x 1 :y 2} :feasible)))
+    (is (lazy-map= {:y 2 :z 3  :b 2 :c 5 :d 6}
+                   (lazy-feasible-flow {:y 2 :z 3} :feasible)))
+    (is (lazy-map= {:z 3  :b 10 :c 13 :d 14}
+                   (lazy-feasible-flow {:z 3 :b 10} :feasible)))
+    (is (lazy-map= {:c 5 :d 6}
+                   (lazy-feasible-flow {:c 5} :feasible)))))
+
+;; Get a subflow - minimal flow subset which is enough to evaluate given keys 
+(let [flow-1 (flow {:a (fnk [] 10)
+                    :b (fnk [a] (* a a))
+                    :c (fnk [a b] (/ a b))
+                    :d (fnk [] 99)
+                    :e (fnk [d] (inc d))
+                    :f (fnk [b d] (+ b d))})]
+  (deftest subflow-test
+    (is (= #{:a} (set (keys (subflow flow-1 [:a])))))
+    (is (= #{:a :b} (set (keys (subflow flow-1 [:b])))))
+    (is (= #{:a :b :c} (set (keys (subflow flow-1 [:c])))))
+    (is (= #{:d :e} (set (keys (subflow flow-1 [:e])))))
+    (is (= #{:a :b :d :f} (set (keys (subflow flow-1 [:f])))))
+    (is (= {:a 10 :b 100 :c 1/10} ((eager-compile (subflow flow-1 [:c])) {})))
+    (is (= {:d 99 :e 100} ((eager-compile (subflow flow-1 [:e])) {})))))
+
+(defmacro eval-time [& body]
+  `(let [start# (. java.lang.System nanoTime)
+         res#   (do ~@body)
+         end#   (. java.lang.System nanoTime)
+         msec# (/ (- end# start#) 1000000.0)]
+     {:res res#
+      :msec msec#}))
+
+;; Parallel evaluation option should be faster
+(let [sleeping-flow (flow {:x (fnk []  (Thread/sleep 100) 1)
+                           :y (fnk [x] (Thread/sleep 100) (inc x))
+                           :z (fnk [y] (Thread/sleep 100) (inc y))
+                           :a (fnk []  (Thread/sleep 150) 1)
+                           :b (fnk [a] (Thread/sleep 150) (inc a))
+                           :v (fnk [z b] (Thread/sleep 50) (+ b z))})
+      eager-flow (eager-compile sleeping-flow)
+      lazy-flow  (lazy-compile  sleeping-flow)]
+  
+  (deftest parallel-timing-test
+    ;; Eager sequential vs parallel evaluation time
+    (let [{:keys [msec res]} (eval-time (eager-flow {}))]
+      (is (< 640 msec 660))
+      (is (= res {:x 1 :y 2 :z 3 :a 1 :b 2 :v 5})))
+    (let [{:keys [msec res]} (eval-time (eager-flow {} :parallel))]
+      (is (< 340 msec 360))
+      (is (= res {:x 1 :y 2 :z 3 :a 1 :b 2 :v 5})))
+    ;; Lazy sequential vs parallel evaluation time
+    (let [{:keys [msec res]} (eval-time (:v (lazy-flow {})))]
+      (is (< 640 msec 660))
+      (is (= res 5)))
+    (let [{:keys [msec res]} (eval-time (:v (lazy-flow {} :parallel)))]
+      (is (< 340 msec 360))
+      (is (= res 5)))
+    ;; Taking keys from the same lazy result
+    (let [f1 (lazy-flow {} :parallel)
+          {tz :msec z :res} (eval-time (:z f1))
+          {tb :msec b :res} (eval-time (:b f1))
+          {tv :msec v :res} (eval-time (:v f1))]
+      (is (< 290 tz 310)
+          (= z 3))
+      (is (< 290 tb 310)
+          (= b 2))
+      (is (< 45 tv 55)
+          (= v 5)))))
