@@ -253,6 +253,22 @@
     (is (= {:x 15.0 :y 73.0 :a 16.0 :b 72.0 :d1 87.0 :d2 57.0 :l 57.0 :sum 144.0}
            ((eager-compile flow-with-lets) {:x 15.0 :y 73.0})))))
 
+;; No-inputs option - output map doesn't contain inputs
+(let [flow-1 (flow {:a (fnk [x] x)
+                    :b (fnk [y a] (+ a y))
+                    :c (fnk [z b] (+ b z))
+                    :d (fnk [a b c] (- a b c))})]
+  (deftest no-inputs-test
+    (is (= {:x 1 :y 2 :z 3 :a 1 :b 3 :c 6 :d -8}
+           ((eager-compile flow-1) {:x 1 :y 2 :z 3})))
+    (is (= {:a 1 :b 3 :c 6 :d -8}
+           ((eager-compile flow-1) {:x 1 :y 2 :z 3} :no-inputs)))
+    (is (lazy-map= {:x 1 :y 2 :z 3 :a 1 :b 3 :c 6 :d -8}
+                   ((lazy-compile flow-1) {:x 1 :y 2 :z 3})))
+    (is (lazy-map= {:a 1 :b 3 :c 6 :d -8}
+                   ((lazy-compile flow-1) {:x 1 :y 2 :z 3} :no-inputs)))))
+
+;; Feasible option - lazy flow output contains only the keys that can be evaluated using provided inputs.
 (let [feasible-flow (flow {:a (fnk [x] x)
                            :b (fnk [y] y)
                            :c (fnk [z b] (+ b z))
@@ -272,6 +288,22 @@
     (is (lazy-map= {:c 5 :d 6}
                    (lazy-feasible-flow {:c 5} :feasible)))))
 
+;; Get a subflow - minimal flow subset which is enough to evaluate given keys 
+(let [flow-1 (flow {:a (fnk [] 10)
+                    :b (fnk [a] (* a a))
+                    :c (fnk [a b] (/ a b))
+                    :d (fnk [] 99)
+                    :e (fnk [d] (inc d))
+                    :f (fnk [b d] (+ b d))})]
+  (deftest subflow-test
+    (is (= #{:a} (set (keys (subflow flow-1 [:a])))))
+    (is (= #{:a :b} (set (keys (subflow flow-1 [:b])))))
+    (is (= #{:a :b :c} (set (keys (subflow flow-1 [:c])))))
+    (is (= #{:d :e} (set (keys (subflow flow-1 [:e])))))
+    (is (= #{:a :b :d :f} (set (keys (subflow flow-1 [:f])))))
+    (is (= {:a 10 :b 100 :c 1/10} ((eager-compile (subflow flow-1 [:c])) {})))
+    (is (= {:d 99 :e 100} ((eager-compile (subflow flow-1 [:e])) {})))))
+
 (defmacro eval-time [& body]
   `(let [start# (. java.lang.System nanoTime)
          res#   (do ~@body)
@@ -280,6 +312,7 @@
      {:res res#
       :msec msec#}))
 
+;; Parallel evaluation option should be faster
 (let [sleeping-flow (flow {:x (fnk []  (Thread/sleep 100) 1)
                            :y (fnk [x] (Thread/sleep 100) (inc x))
                            :z (fnk [y] (Thread/sleep 100) (inc y))
@@ -290,14 +323,14 @@
       lazy-flow  (lazy-compile  sleeping-flow)]
   
   (deftest parallel-timing-test
-    ;; Eager sequental vs parallel evaluation time
+    ;; Eager sequential vs parallel evaluation time
     (let [{:keys [msec res]} (eval-time (eager-flow {}))]
       (is (< 640 msec 660))
       (is (= res {:x 1 :y 2 :z 3 :a 1 :b 2 :v 5})))
     (let [{:keys [msec res]} (eval-time (eager-flow {} :parallel))]
       (is (< 340 msec 360))
       (is (= res {:x 1 :y 2 :z 3 :a 1 :b 2 :v 5})))
-    ;; Lazy sequental vs parallel evaluation time
+    ;; Lazy sequential vs parallel evaluation time
     (let [{:keys [msec res]} (eval-time (:v (lazy-flow {})))]
       (is (< 640 msec 660))
       (is (= res 5)))
