@@ -61,7 +61,8 @@
   (deftest fnk-inputs-test
     ;; default values for fnk keys are ignored since flow contains same keys
     ;; keys :a and :b are required, though default values {a 0 b 0} were defined
-    (is (= #{:a :b} (fnk-inputs (flow-1 'c) flow-1))))
+    (is (= #{:a :b} (:shakhov.flow.core/required-keys (fnk-inputs (flow-1 'c) flow-1))))
+    (is (= #{:alpha} (:shakhov.flow.core/optional-keys (fnk-inputs (flow-1 'c) flow-1)))))
   
   ;; Flow can be compiled to 'eager' function which takes input map
   ;; and evaluates all flow key values at once.

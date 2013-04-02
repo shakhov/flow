@@ -113,9 +113,11 @@
   ([fnk]
      (select-keys (meta fnk) [::required-keys ::optional-keys]))
   ([fnk flow]
-     (set/union (::required-keys (meta fnk))
-                (set/intersection (::optional-keys (meta fnk))
-                                  (set (keys flow))))))
+     {::required-keys (set/union (::required-keys (meta fnk))
+                                 (set/intersection (::optional-keys (meta fnk))
+                                                   (set (keys flow))))
+      ::optional-keys (set/difference (::optional-keys (meta fnk))
+                                      (set (keys flow)))}))
 
 (defn- destructure-set-keys
   [set-subflow]
@@ -173,7 +175,7 @@
   "Return map from flow keys to their dependencies.
    Required keys of each fnk specify flow graph relationships"
   [flow]
-  (map-vals #(fnk-inputs % flow) flow))
+  (map-vals #(::required-keys (fnk-inputs % flow)) flow))
 
 (defn subflow
   "Return minimal subflow containing all keys required to evaluate specified keys"
