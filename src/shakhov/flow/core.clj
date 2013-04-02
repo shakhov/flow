@@ -53,7 +53,7 @@
                                   (set (keys input-map)))]
       (throw (new Exception (str "Missing input keys: " missing))))))
 
-(defn safe-order [fg & {paths :paths}]
+(defn- safe-order [fg & {paths :paths}]
   (let [{:keys [order remains]} (graph/graph-order fg)
         inputs (graph/external-keys fg)]
     (when-not (empty? remains)
@@ -176,6 +176,11 @@
    Required keys of each fnk specify flow graph relationships"
   [flow]
   (map-vals #(::required-keys (fnk-inputs % flow)) flow))
+
+(defn flow-order
+  "Return topological ordering of the flow graph"
+  [flow]
+  (safe-order (flow-graph flow)))
 
 (defn subflow
   "Return minimal subflow containing all keys required to evaluate specified keys"
