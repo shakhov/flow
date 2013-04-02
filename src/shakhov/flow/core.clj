@@ -304,14 +304,37 @@
 
 (defn flow->dot
   "Print representation of flow in 'dot' format to standard output."
-  [flow]
-  (let [fg (flow-graph flow)
-        all-keys (set/union (graph/internal-keys fg)
-                            (graph/external-keys fg))]
+  [flow & options]
+  (let [options (set options)
+        fg (flow-graph flow)
+        optional-graph (map-vals #(::optional-keys (fnk-inputs % flow)) flow)
+        external-keys (graph/external-keys fg)
+        internal-keys (graph/internal-keys fg)
+        optional-keys (reduce into #{} (vals optional-graph))
+        external-keys-style " [shape=invhouse]"
+        optional-keys-style " [shape=invhouse,style=dashed]"
+        internal-keys-style " [shape=rect,style=rounded]"
+        gensymed-keys-style " [shape=rect,style=\"rounded,dashed\"]"
+        order (when (:show-order options)
+                (safe-order fg))]
     (println "digraph {")
-    (doseq [key all-keys]
-      (println (str (pr-str (name key)) ";")))
+    (doseq [key external-keys]
+      (println (str (pr-str (name key)) " " external-keys-style ";")))
+    (doseq [key optional-keys]
+      (println (str (pr-str (name key)) " " optional-keys-style ";")))
+    (doseq [key internal-keys]
+      (println (str (pr-str (name key))
+                    (when (:show-order options)
+                      (str " [label=\"" (first (keep-indexed #(when (contains? %2 key) %1) order))
+                           ". " (name key) "\"]"))
+                    (if (gensymed? key)
+                      gensymed-keys-style
+                      internal-keys-style)
+                    ";")))
     (doseq [[key inputs] fg]
+      (doseq [i inputs]
+        (println (str (pr-str (name i)) " -> " (pr-str (name key)) ";"))))
+    (doseq [[key inputs] optional-graph]
       (doseq [i inputs]
         (println (str (pr-str (name i)) " -> " (pr-str (name key)) ";"))))
     (println "}")))
