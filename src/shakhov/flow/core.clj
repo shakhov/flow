@@ -302,10 +302,10 @@
                                                                         ((:inputs suborders) %))
                                                                (keys flow)))
                                      flow))]
-        (lazy-map/create-lazy-map
-         (merge (filter-gensyms (apply dissoc delayed-flow (keys input-map)))
-                (when-not (:no-inputs options)
-                  input-map)))))))
+        (merge (lazy-map/create-lazy-map
+                 (filter-gensyms (apply dissoc delayed-flow (keys input-map))))
+               (when-not (:no-inputs options)
+                 input-map))))))
 
 (defn flow->dot
   "Print representation of flow in 'dot' format to standard output."
